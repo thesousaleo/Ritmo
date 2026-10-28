@@ -4,8 +4,15 @@ import { createClient } from '@supabase/supabase-js';
 export const SUPABASE_URL = 'https://mdpwlihnyxfxjekdszrg.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_YT9HTP9cxuy3S97400YYxA_wTRQcUwJ';
 
-// Para onde os e-mails de confirmação e de nova senha levam
-export const SITE_URL = 'https://thesousaleo.github.io/ritmo/';
+// Para onde os e-mails de confirmação e de nova senha levam: a própria página no navegador,
+// ou o site publicado quando o pedido sai do APK (o link de e-mail abre no navegador do celular).
+const PUBLIC_SITE = 'https://thesousaleo.github.io/Ritmo/';
+export const SITE_URL =
+  typeof window !== 'undefined' && window.location.protocol === 'https:' && window.location.hostname.endsWith('github.io')
+    ? window.location.origin + window.location.pathname
+    : typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname) && window.location.port
+      ? window.location.origin + window.location.pathname
+      : PUBLIC_SITE;
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {

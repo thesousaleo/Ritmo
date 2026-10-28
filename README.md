@@ -2,8 +2,8 @@
 
 Rastreador de hábitos diários. A mesma base de código vira três coisas:
 
-- **Site responsivo**: layout de celular (tab bar, bottom sheets) e de computador (barra lateral, duas colunas, diálogos), publicado no GitHub Pages: https://thesousaleo.github.io/ritmo/
-- **APK Android**: gerado pelo Capacitor a cada push e publicado em [Releases](../../releases/latest). Download direto: https://github.com/thesousaleo/ritmo/releases/latest/download/ritmo.apk
+- **Site responsivo**: layout de celular (tab bar, bottom sheets) e de computador (barra lateral, duas colunas, diálogos), publicado no GitHub Pages: https://thesousaleo.github.io/Ritmo/
+- **APK Android**: gerado pelo Capacitor a cada push e publicado em [Releases](../../releases/latest). Download direto: https://github.com/thesousaleo/Ritmo/releases/latest/download/ritmo.apk
 - **Sincronização** entre aparelhos via Supabase (login com e-mail e senha).
 
 ## Como a sincronização funciona

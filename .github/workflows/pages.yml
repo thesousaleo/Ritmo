@@ -33,10 +33,7 @@ jobs:
       - name: Build do site
         run: ci/run.sh "Build web" npm run build
         env:
-          VITE_BASE: /ritmo/
-
-      # GitHub Pages não tem rewrite: 404.html devolve o app em qualquer caminho
-      - run: cp dist/index.html dist/404.html
+          VITE_BASE: ./
 
       - uses: actions/configure-pages@v5
 
