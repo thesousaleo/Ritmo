@@ -16,22 +16,22 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Instalar dependências
-        run: npm install --no-audit --no-fund
+        run: ci/run.sh "npm install" npm install --no-audit --no-fund
 
       - name: Testes
-        run: npm test
+        run: ci/run.sh "Testes" npm test
 
       - name: Build do site
-        run: npm run build
+        run: ci/run.sh "Build web" npm run build
         env:
           VITE_BASE: /ritmo/
 
@@ -46,7 +46,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
