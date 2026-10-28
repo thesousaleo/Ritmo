@@ -1,0 +1,13 @@
+{
+  "appId": "io.github.thesousaleo.ritmo",
+  "appName": "Ritmo",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#ECEFE9"
+  },
+  "plugins": {
+    "StatusBar": {
+      "overlaysWebView": false
+    }
+  }
+}

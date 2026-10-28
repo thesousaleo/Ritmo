@@ -1,0 +1,89 @@
+name: Gerar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+
+      - name: Testes
+        run: npm test
+
+      - name: Build do app web
+        run: npm run build
+        env:
+          VITE_BASE: ./
+
+      - name: Criar projeto Android
+        run: npx cap add android
+
+      - name: Ícones do app
+        continue-on-error: true
+        run: npx capacitor-assets generate --android --iconBackgroundColor '#ECEFE9' --iconBackgroundColorDark '#0F1412'
+
+      - name: Sincronizar Capacitor
+        run: npx cap sync android
+
+      - name: Versão do APK
+        run: |
+          sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          sed -i "s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -E "versionCode|versionName" android/app/build.gradle
+
+      # Mesma chave em todo build: o Android aceita instalar a versão nova por cima da antiga
+      - name: Chave de assinatura fixa
+        run: |
+          mkdir -p ~/.android
+          cp signing/debug.keystore ~/.android/debug.keystore
+
+      - name: Compilar APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Renomear
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk ritmo.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ritmo-apk
+          path: ritmo.apk
+
+      - name: Publicar em Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Ritmo 1.0.${{ github.run_number }}
+          make_latest: true
+          files: ritmo.apk
+          body: |
+            APK do Ritmo gerado a partir de ${{ github.sha }}.
+
+            Para instalar: baixe `ritmo.apk` no celular Android, abra o arquivo e permita a instalação de apps desta fonte quando o Android pedir. Versões novas instalam por cima e mantêm seus dados.
