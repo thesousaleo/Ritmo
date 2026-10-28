@@ -7,14 +7,16 @@
  *   reaplica por cima o que ainda está na fila, então nada que o usuário fez se perde.
  * - Outros aparelhos ficam sabendo das mudanças pelo Realtime (INSERT/UPDATE do próprio
  *   usuário) e, como reforço, ao voltar para o app e ao reconectar.
- * - Hábitos excluídos são marcados (deleted = true) para que a exclusão também sincronize.
+ * - Hábitos excluídos são marcados (deleted = true): a exclusão sincroniza e pode ser desfeita.
  */
+
+import { normalizeHabit } from './habits.js';
 
 const PENDING_KEY = 'ritmo.pending.v1';
 const LINK_KEY = 'ritmo.linked-user';
 const CHUNK = 500;
 
-export const emptyPending = () => ({ habits: {}, checkins: {}, profile: null });
+export const emptyPending = () => ({ habits: {}, checkins: {}, moods: {}, profile: null });
 
 const nowIso = () => new Date().toISOString();
 
@@ -31,31 +33,56 @@ export const toHabitRow = (h, userId, position) => ({
   created_on: h.createdAt,
   position,
   deleted: !!h.deleted,
+  kind: h.kind || 'build',
+  freq: h.freq || 'days',
+  per_week: h.perWeek || 3,
+  duration_min: h.duration || 0,
+  reminder: h.reminder || null,
+  archived: !!h.archived,
   updated_at: nowIso(),
 });
 
-export const fromHabitRow = (r) => ({
-  id: r.id,
-  name: r.name,
-  icon: r.icon,
-  color: r.color,
-  period: r.period,
-  days: (r.days || []).map(Number).sort((a, b) => a - b),
-  target: Number(r.target) || 1,
-  unit: r.unit || '',
-  createdAt: String(r.created_on).slice(0, 10),
-});
+export const fromHabitRow = (r) =>
+  normalizeHabit({
+    id: r.id,
+    name: r.name,
+    icon: r.icon,
+    color: r.color,
+    period: r.period,
+    days: (r.days || []).map(Number).sort((a, b) => a - b),
+    target: Number(r.target) || 1,
+    unit: r.unit || '',
+    createdAt: String(r.created_on).slice(0, 10),
+    kind: r.kind || 'build',
+    freq: r.freq || 'days',
+    perWeek: Number(r.per_week) || 3,
+    duration: Number(r.duration_min) || 0,
+    reminder: r.reminder || '',
+    archived: !!r.archived,
+  });
 
-export const checkinRow = (userId, habitId, day, count) => ({
+export const checkinRow = (userId, habitId, day, count, note = '') => ({
   user_id: userId,
   habit_id: habitId,
   day,
   count,
+  note: note || '',
+  updated_at: nowIso(),
+});
+
+export const moodRow = (userId, day, mood) => ({ user_id: userId, day, mood: mood || 0, updated_at: nowIso() });
+
+export const profileRow = (userId, p) => ({
+  user_id: userId,
+  name: p.name || '',
+  breaks: (p.breaks || []).map((b) => ({ id: b.id, start: b.start, end: b.end })),
+  weekly_email: !!p.weeklyEmail,
   updated_at: nowIso(),
 });
 
 /** Estado do app a partir do servidor + fila local por cima. Função pura (testada em test/sync.test.mjs). */
-export function buildSnapshot(habitRows, checkinRows, profileRow, pending) {
+export function buildSnapshot(server, pending) {
+  const { habitRows = [], checkinRows = [], moodRows = [], profileRow: prof = null } = server;
   const byId = new Map();
   for (const r of habitRows) byId.set(r.id, r);
   for (const r of Object.values(pending.habits)) byId.set(r.id, r);
@@ -64,22 +91,45 @@ export function buildSnapshot(habitRows, checkinRows, profileRow, pending) {
   const visible = new Set(habits.map((h) => h.id));
 
   const log = {};
+  const notes = {};
   const put = (r) => {
     if (!visible.has(r.habit_id)) return;
     const day = String(r.day).slice(0, 10);
     const count = Number(r.count) || 0;
-    if (count > 0) {
-      (log[day] = log[day] || {})[r.habit_id] = count;
-    } else if (log[day]) {
+    const note = r.note || '';
+    if (count > 0) (log[day] = log[day] || {})[r.habit_id] = count;
+    else if (log[day]) {
       delete log[day][r.habit_id];
       if (!Object.keys(log[day]).length) delete log[day];
+    }
+    if (note) (notes[day] = notes[day] || {})[r.habit_id] = note;
+    else if (notes[day]) {
+      delete notes[day][r.habit_id];
+      if (!Object.keys(notes[day]).length) delete notes[day];
     }
   };
   checkinRows.forEach(put);
   Object.values(pending.checkins).forEach(put);
 
-  const name = pending.profile ? pending.profile.name : profileRow ? profileRow.name : null;
-  return { habits, log, name };
+  const moods = {};
+  const putMood = (r) => {
+    const day = String(r.day).slice(0, 10);
+    if (r.mood > 0) moods[day] = Number(r.mood);
+    else delete moods[day];
+  };
+  moodRows.forEach(putMood);
+  Object.values(pending.moods || {}).forEach(putMood);
+
+  const p = pending.profile || prof;
+  return {
+    habits,
+    log,
+    notes,
+    moods,
+    name: p ? p.name : null,
+    breaks: p && Array.isArray(p.breaks) ? p.breaks : null,
+    weeklyEmail: p ? !!p.weekly_email : null,
+  };
 }
 
 /** Linhas para subir os dados deste aparelho para uma conta nova. */
@@ -89,12 +139,19 @@ export function uploadRows(data, userId) {
     habits[h.id] = toHabitRow(h, userId, i);
   });
   const checkins = {};
-  for (const [day, entries] of Object.entries(data.log)) {
-    for (const [habitId, count] of Object.entries(entries)) {
-      if (count > 0 && habits[habitId]) checkins[`${habitId}|${day}`] = checkinRow(userId, habitId, day, count);
+  const days = new Set([...Object.keys(data.log || {}), ...Object.keys(data.notes || {})]);
+  for (const day of days) {
+    const ids = new Set([...Object.keys((data.log || {})[day] || {}), ...Object.keys((data.notes || {})[day] || {})]);
+    for (const habitId of ids) {
+      if (!habits[habitId]) continue;
+      const count = ((data.log || {})[day] || {})[habitId] || 0;
+      const note = ((data.notes || {})[day] || {})[habitId] || '';
+      if (count > 0 || note) checkins[`${habitId}|${day}`] = checkinRow(userId, habitId, day, count, note);
     }
   }
-  return { habits, checkins };
+  const moods = {};
+  for (const [day, mood] of Object.entries(data.moods || {})) if (mood > 0) moods[day] = moodRow(userId, day, mood);
+  return { habits, checkins, moods };
 }
 
 function read(key, fallback) {
@@ -136,7 +193,10 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
   };
   const persist = () => write(PENDING_KEY, pending);
   const hasPending = () =>
-    Object.keys(pending.habits).length > 0 || Object.keys(pending.checkins).length > 0 || !!pending.profile;
+    Object.keys(pending.habits).length > 0 ||
+    Object.keys(pending.checkins).length > 0 ||
+    Object.keys(pending.moods || {}).length > 0 ||
+    !!pending.profile;
 
   function scheduleFlush(delay = 400) {
     clearTimeout(flushTimer);
@@ -166,7 +226,12 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     flushing = true;
     setStatus('syncing');
     const gen = generation;
-    const batch = { habits: { ...pending.habits }, checkins: { ...pending.checkins }, profile: pending.profile };
+    const batch = {
+      habits: { ...pending.habits },
+      checkins: { ...pending.checkins },
+      moods: { ...(pending.moods || {}) },
+      profile: pending.profile,
+    };
     try {
       await upsertChunks('habits', Object.values(batch.habits), 'user_id,id');
       try {
@@ -178,6 +243,7 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
           batch.checkins = {};
         } else throw e;
       }
+      await upsertChunks('moods', Object.values(batch.moods), 'user_id,day');
       if (batch.profile) {
         const { error } = await client.from('profiles').upsert(batch.profile, { onConflict: 'user_id' });
         if (error) throw error;
@@ -186,6 +252,7 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
       // Remove só o que não mudou enquanto o envio acontecia
       for (const [k, r] of Object.entries(batch.habits)) if (pending.habits[k] === r) delete pending.habits[k];
       for (const [k, r] of Object.entries(batch.checkins)) if (pending.checkins[k] === r) delete pending.checkins[k];
+      for (const [k, r] of Object.entries(batch.moods)) if (pending.moods[k] === r) delete pending.moods[k];
       if (pending.profile === batch.profile) pending.profile = null;
       persist();
       if (hasPending()) scheduleFlush(50);
@@ -201,27 +268,28 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     }
   }
 
-  async function fetchAll() {
-    const [h, p] = await Promise.all([
-      client.from('habits').select('*'),
-      client.from('profiles').select('*').maybeSingle(),
-    ]);
-    if (h.error) throw h.error;
-    if (p.error) throw p.error;
-    const checkins = [];
+  async function fetchPaged(table, columns, orderCols) {
+    const rows = [];
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await client
-        .from('checkins')
-        .select('habit_id,day,count')
-        .gt('count', 0)
-        .order('day', { ascending: true })
-        .order('habit_id', { ascending: true })
-        .range(from, from + 999);
+      let q = client.from(table).select(columns);
+      for (const c of orderCols) q = q.order(c, { ascending: true });
+      const { data, error } = await q.range(from, from + 999);
       if (error) throw error;
-      checkins.push(...data);
+      rows.push(...data);
       if (data.length < 1000) break;
     }
-    return { habitRows: h.data || [], checkinRows: checkins, profileRow: p.data };
+    return rows;
+  }
+
+  async function fetchAll() {
+    const [h, p] = await Promise.all([client.from('habits').select('*'), client.from('profiles').select('*').maybeSingle()]);
+    if (h.error) throw h.error;
+    if (p.error) throw p.error;
+    const [checkinRows, moodRows] = await Promise.all([
+      fetchPaged('checkins', 'habit_id,day,count,note', ['day', 'habit_id']),
+      fetchPaged('moods', 'day,mood', ['day']),
+    ]);
+    return { habitRows: h.data || [], checkinRows, moodRows, profileRow: p.data };
   }
 
   async function pull() {
@@ -231,7 +299,7 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     try {
       const s = await fetchAll();
       if (gen !== generation) return;
-      onSnapshot(buildSnapshot(s.habitRows, s.checkinRows, s.profileRow, pending));
+      onSnapshot(buildSnapshot(s, pending));
       if (!hasPending()) setStatus('synced');
       else scheduleFlush(0);
     } catch (e) {
@@ -245,7 +313,7 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     if (channel) client.removeChannel(channel);
     const filter = `user_id=eq.${userId}`;
     channel = client.channel(`ritmo-${userId}`);
-    for (const table of ['habits', 'checkins', 'profiles']) {
+    for (const table of ['habits', 'checkins', 'moods', 'profiles']) {
       for (const event of ['INSERT', 'UPDATE']) {
         channel.on('postgres_changes', { event, schema: 'public', table, filter }, () => schedulePull(700));
       }
@@ -275,12 +343,13 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
         const up = uploadRows(localData, uid);
         pending.habits = { ...up.habits, ...pending.habits };
         pending.checkins = { ...up.checkins, ...pending.checkins };
-        pending.profile = { user_id: uid, name: localData.name || '', updated_at: nowIso() };
+        pending.moods = { ...up.moods, ...pending.moods };
+        pending.profile = profileRow(uid, localData);
         persist();
         result = 'uploaded';
         await flush();
       } else {
-        onSnapshot(buildSnapshot(s.habitRows, s.checkinRows, s.profileRow, pending), { replaced: true });
+        onSnapshot(buildSnapshot(s, pending), { replaced: true });
         if (hasPending()) scheduleFlush(0);
         else setStatus('synced');
       }
@@ -323,6 +392,9 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     get linked() {
       return !!userId;
     },
+    get userId() {
+      return userId;
+    },
     hasPending,
     queueHabit(h, position) {
       if (!userId) return;
@@ -330,29 +402,46 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
       persist();
       scheduleFlush();
     },
-    queueCheckin(habitId, day, count) {
+    queueHabits(list) {
       if (!userId) return;
-      pending.checkins[`${habitId}|${day}`] = checkinRow(userId, habitId, day, count);
+      list.forEach((h, i) => {
+        pending.habits[h.id] = toHabitRow(h, userId, i);
+      });
       persist();
       scheduleFlush();
     },
-    queueProfile(name) {
+    queueCheckin(habitId, day, count, note) {
       if (!userId) return;
-      pending.profile = { user_id: userId, name, updated_at: nowIso() };
+      pending.checkins[`${habitId}|${day}`] = checkinRow(userId, habitId, day, count, note);
       persist();
       scheduleFlush();
     },
-    /** Apaga o histórico na conta. Precisa de conexão. */
-    async resetHistory(habits, todayKey, name) {
+    queueMood(day, mood) {
+      if (!userId) return;
+      pending.moods[day] = moodRow(userId, day, mood);
+      persist();
+      scheduleFlush();
+    },
+    queueProfile(p) {
+      if (!userId) return;
+      pending.profile = profileRow(userId, p);
+      persist();
+      scheduleFlush();
+    },
+    /** Apaga o histórico (check-ins, notas e humor) na conta. Precisa de conexão. */
+    async resetHistory(habits, todayKey, profile) {
       if (!userId) return;
       pending.checkins = {};
+      pending.moods = {};
       habits.forEach((h, i) => {
         pending.habits[h.id] = toHabitRow({ ...h, createdAt: todayKey }, userId, i);
       });
       persist();
-      const { error } = await client.from('checkins').delete().eq('user_id', userId);
-      if (error) throw error;
-      pending.profile = { user_id: userId, name, reset_at: nowIso(), updated_at: nowIso() };
+      const r1 = await client.from('checkins').delete().eq('user_id', userId);
+      if (r1.error) throw r1.error;
+      const r2 = await client.from('moods').delete().eq('user_id', userId);
+      if (r2.error) throw r2.error;
+      pending.profile = profileRow(userId, profile);
       persist();
       await flush();
     },

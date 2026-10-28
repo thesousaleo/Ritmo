@@ -164,7 +164,32 @@ function NewPassword({ onDone }) {
   );
 }
 
-function SignedIn({ user, name, status, hasPending, onRename, onSyncNow, onSignOut }) {
+function WeeklyEmail({ email, enabled, onToggle, onTest }) {
+  const [state, setState] = useState({ busy: false, msg: '', error: false });
+  const test = async () => {
+    setState({ busy: true, msg: '', error: false });
+    const res = await onTest();
+    setState({ busy: false, msg: res.message, error: !res.ok });
+  };
+  return (
+    <div className="field">
+      <span className="field-label">Resumo semanal por e-mail</span>
+      <div className="reminder-row">
+        <button type="button" className={`switch${enabled ? ' is-on' : ''}`} role="switch" aria-checked={enabled} onClick={() => onToggle(!enabled)}>
+          <span className="switch-knob" />
+          <span className="sr-only">Resumo semanal por e-mail</span>
+        </button>
+        <span className="field-hint flex-1">{enabled ? `Todo domingo às 19h, para ${email}` : 'Desligado'}</span>
+      </div>
+      <button type="button" className="btn-link self-start" onClick={test} disabled={state.busy}>
+        {state.busy ? 'Enviando…' : 'Enviar um resumo de teste agora'}
+      </button>
+      {state.msg && <p className={state.error ? 'field-error' : 'notice'}>{state.msg}</p>}
+    </div>
+  );
+}
+
+function SignedIn({ user, name, status, hasPending, onRename, onSyncNow, onSignOut, weeklyEmail, onWeeklyEmail, onTestEmail }) {
   const [draft, setDraft] = useState(name || '');
   const [confirmOut, setConfirmOut] = useState(false);
   useEffect(() => setDraft(name || ''), [name]);
@@ -209,6 +234,8 @@ function SignedIn({ user, name, status, hasPending, onRename, onSyncNow, onSignO
         />
       </label>
 
+      <WeeklyEmail email={user.email} enabled={weeklyEmail} onToggle={onWeeklyEmail} onTest={onTestEmail} />
+
       <AnimatePresence mode="wait" initial={false}>
         {!confirmOut ? (
           <motion.div key="out" {...swapProps}>
@@ -237,17 +264,55 @@ function SignedIn({ user, name, status, hasPending, onRename, onSyncNow, onSignO
   );
 }
 
-export function AccountSheet({ desktop, user, recovery, name, status, hasPending, onClose, onRename, onLocalName, onSyncNow, onSignOut, onRecoveryDone }) {
+function ExportButton({ onExport }) {
+  const [msg, setMsg] = useState('');
+  const run = async () => {
+    setMsg('');
+    try {
+      const r = await onExport();
+      if (r === 'downloaded') setMsg('Arquivo baixado.');
+    } catch (e) {
+      setMsg('Não deu para gerar o arquivo agora. Tente de novo.');
+    }
+  };
+  return (
+    <div className="field">
+      <span className="field-label">Seus dados</span>
+      <button type="button" className="btn-secondary self-start" onClick={run}>
+        <Icon name="Download" size={16} /> Exportar histórico (CSV)
+      </button>
+      <p className="field-hint">Uma linha por hábito e dia, com notas e humor. Abre no Excel e no Google Planilhas.</p>
+      {msg && <p className="field-hint">{msg}</p>}
+    </div>
+  );
+}
+
+export function AccountSheet({
+  desktop, user, recovery, name, status, hasPending, weeklyEmail,
+  onClose, onRename, onLocalName, onSyncNow, onSignOut, onRecoveryDone, onExport, onWeeklyEmail, onTestEmail,
+}) {
   const title = recovery ? 'Nova senha' : user ? 'Sua conta' : 'Sincronizar aparelhos';
   return (
     <Sheet desktop={desktop} title={title} onClose={onClose} labelId="account-title">
       {recovery ? (
         <NewPassword onDone={onRecoveryDone} />
       ) : user ? (
-        <SignedIn user={user} name={name} status={status} hasPending={hasPending} onRename={onRename} onSyncNow={onSyncNow} onSignOut={onSignOut} />
+        <SignedIn
+          user={user}
+          name={name}
+          status={status}
+          hasPending={hasPending}
+          onRename={onRename}
+          onSyncNow={onSyncNow}
+          onSignOut={onSignOut}
+          weeklyEmail={weeklyEmail}
+          onWeeklyEmail={onWeeklyEmail}
+          onTestEmail={onTestEmail}
+        />
       ) : (
         <SignedOut localName={name} onLocalName={onLocalName} />
       )}
+      {!recovery && <ExportButton onExport={onExport} />}
     </Sheet>
   );
 }

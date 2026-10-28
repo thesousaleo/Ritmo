@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icon, AnimatedNumber, RollingNumber, SPRING, EASE_OUT } from './ui.jsx';
 import {
-  PERIODS, PERIOD_SHORT, WEEKDAY_LETTER, colorOf, keyOf, fromKey, addDays, fmtLong, greetingFor,
-  isScheduled, isDone, countOf, currentStreak, daySummary,
+  PERIODS, PERIOD_SHORT, WEEKDAY_LETTER, MOODS, colorOf, keyOf, fromKey, addDays, fmtLong, greetingFor,
+  isListed, isScheduled, isWeekly, isAvoid, isDone, countOf, currentStreak, daySummary, weekCount, weekStart,
+  activeHabits, breakOn, shortDate, streakShort,
 } from '../lib/habits.js';
 
 /* ------------------------------------------------------------------ */
@@ -56,7 +57,7 @@ function arcPath(cx, cy, r, start, end) {
 
 let ringIntroPlayed = false; // a varredura de entrada acontece uma vez por sessão
 
-function DayRing({ items, done, total, percent }) {
+function DayRing({ items, done, total, percent, paused }) {
   const intro = useRef(!ringIntroPlayed);
   useEffect(() => {
     ringIntroPlayed = true;
@@ -69,9 +70,9 @@ function DayRing({ items, done, total, percent }) {
   const seg = n ? 360 / n - gap : 0;
 
   return (
-    <div className="ring" role="img" aria-label={`${done} de ${total} hábitos concluídos`}>
+    <div className="ring" role="img" aria-label={paused ? 'Dia em pausa' : `${done} de ${total} hábitos concluídos`}>
       <svg viewBox="0 0 120 120" className="ring-svg">
-        {n === 0 && <circle cx="60" cy="60" r={R} fill="none" stroke="var(--surface-2)" strokeWidth={SW} />}
+        {n === 0 && <circle cx="60" cy="60" r={R} fill="none" stroke="var(--surface-2)" strokeWidth={SW} strokeDasharray={paused ? '3 9' : undefined} strokeLinecap="round" />}
         {items.map((it, i) => {
           const start = i * (360 / n) + gap / 2;
           const end = n === 1 ? start + 359.9 : start + seg;
@@ -99,13 +100,22 @@ function DayRing({ items, done, total, percent }) {
         })}
       </svg>
       <div className="ring-center">
-        <span className="ring-num">
-          <AnimatedNumber value={percent} />
-          <span className="ring-pct">%</span>
-        </span>
-        <span className="ring-sub">
-          {done} de {total}
-        </span>
+        {paused ? (
+          <>
+            <Icon name="Pause" size={28} className="text-[color:var(--muted)]" />
+            <span className="ring-sub">Em pausa</span>
+          </>
+        ) : (
+          <>
+            <span className="ring-num">
+              <AnimatedNumber value={percent} />
+              <span className="ring-pct">%</span>
+            </span>
+            <span className="ring-sub">
+              {done} de {total}
+            </span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -150,7 +160,7 @@ function WeekStrip({ data, selectedKey, onSelect, today }) {
         const k = keyOf(d);
         const future = k > todayKey;
         const selected = k === selectedKey;
-        const summary = future ? null : daySummary(data.habits, data.log, d);
+        const summary = future ? null : daySummary(data, d);
         return (
           <button
             key={k}
@@ -159,7 +169,7 @@ function WeekStrip({ data, selectedKey, onSelect, today }) {
             aria-selected={selected}
             data-selected={selected}
             disabled={future}
-            className={`day${selected ? ' is-selected' : ''}${k === todayKey ? ' is-today' : ''}`}
+            className={`day${selected ? ' is-selected' : ''}${k === todayKey ? ' is-today' : ''}${summary && summary.paused ? ' is-paused' : ''}`}
             onClick={() => onSelect(k)}
             aria-label={fmtLong.format(d)}
           >
@@ -179,10 +189,11 @@ function WeekStrip({ data, selectedKey, onSelect, today }) {
 /* ------------------------------------------------------------------ */
 /* Check                                                               */
 /* ------------------------------------------------------------------ */
-function CheckButton({ habit, count, onPress }) {
+function CheckButton({ habit, count, onPress, timerRunning }) {
   const c = colorOf(habit.color);
   const multi = habit.target > 1;
   const done = count >= habit.target;
+  const timed = habit.duration > 0;
   const [burst, setBurst] = useState(0);
   const prevDone = useRef(done);
 
@@ -191,18 +202,22 @@ function CheckButton({ habit, count, onPress }) {
     prevDone.current = done;
   }, [done]);
 
-  const label = multi
-    ? done
+  const label = done
+    ? multi
       ? `${habit.name}: meta concluída. Tocar para zerar`
-      : `${habit.name}: ${count} de ${habit.target}. Tocar para somar 1`
-    : done
-      ? `Desmarcar ${habit.name}`
-      : `Concluir ${habit.name}`;
+      : `Desmarcar ${habit.name}`
+    : timed
+      ? `Iniciar temporizador de ${habit.duration} minutos para ${habit.name}`
+      : multi
+        ? `${habit.name}: ${count} de ${habit.target}. Tocar para somar 1`
+        : isAvoid(habit)
+          ? `Marcar que evitou ${habit.name} hoje`
+          : `Concluir ${habit.name}`;
 
   return (
     <motion.button
       type="button"
-      className="check"
+      className={`check${isAvoid(habit) ? ' is-avoid' : ''}`}
       style={{ '--c': c.value, '--on': c.on }}
       onClick={onPress}
       whileTap={{ scale: 0.86 }}
@@ -238,7 +253,12 @@ function CheckButton({ habit, count, onPress }) {
           transition={done ? { duration: 0.22, ease: EASE_OUT, delay: 0.05 } : { duration: 0.1 }}
         />
       </svg>
-      {multi && !done && (
+      {!done && timed && (
+        <span className={`check-play${timerRunning ? ' is-running' : ''}`}>
+          <Icon name={timerRunning ? 'Hourglass' : 'Play'} size={15} strokeWidth={2.4} />
+        </span>
+      )}
+      {multi && !done && !timed && (
         <span className="check-count">
           <RollingNumber value={count} />
         </span>
@@ -256,34 +276,80 @@ function CheckButton({ habit, count, onPress }) {
   );
 }
 
-function HabitRow({ habit, count, streak, onToggle, onEdit }) {
+function HabitRow({ habit, data, dayKey, today, streak, onToggle, onOpen, timerRunning }) {
   const c = colorOf(habit.color);
+  const count = countOf(data.log, dayKey, habit.id);
   const done = count >= habit.target;
-  const meta = habit.target > 1 ? `${count} de ${habit.target} ${habit.unit}`.trim() : habit.unit || 'Uma vez';
+  const hasNote = !!(data.notes && data.notes[dayKey] && data.notes[dayKey][habit.id]);
+
+  let meta;
+  if (isWeekly(habit)) {
+    const n = weekCount(habit, data.log, weekStart(fromKey(dayKey)));
+    meta = `${Math.min(n, habit.perWeek)} de ${habit.perWeek} nesta semana`;
+  } else if (habit.target > 1) meta = `${count} de ${habit.target} ${habit.unit}`.trim();
+  else if (habit.duration > 0) meta = timerRunning ? 'Temporizador em andamento' : `${habit.duration} minutos`;
+  else if (isAvoid(habit)) meta = done ? 'Evitado hoje' : 'Evitar';
+  else meta = habit.unit || 'Uma vez';
 
   return (
     <div className={`row${done ? ' is-done' : ''}`} style={{ '--c': c.value }}>
-      <button type="button" className="row-main" onClick={() => onEdit(habit)} aria-label={`Editar ${habit.name}`}>
-        <span className="tile">
+      <button type="button" className="row-main" onClick={() => onOpen(habit)} aria-label={`Abrir ${habit.name}`}>
+        <span className={`tile${isAvoid(habit) ? ' is-avoid' : ''}`}>
           <Icon name={habit.icon} size={20} />
         </span>
         <span className="row-text">
           <span className="row-title">
             <span className="row-title-text">{habit.name}</span>
-            <motion.span className="strike" initial={false} animate={{ scaleX: done ? 1 : 0 }} transition={{ duration: done ? 0.22 : 0.12, ease: EASE_OUT }} />
+            <motion.span className="strike" initial={false} animate={{ scaleX: done && !isAvoid(habit) ? 1 : 0 }} transition={{ duration: done ? 0.22 : 0.12, ease: EASE_OUT }} />
           </span>
           <span className="row-meta">
             <span className="truncate">{meta}</span>
+            {hasNote && <Icon name="StickyNote" size={13} className="flex-none" aria-label="Tem nota" />}
+            {habit.reminder && !done && dayKey === keyOf(today) && (
+              <span className="reminder-chip">
+                <Icon name="Bell" size={11} strokeWidth={2.4} />
+                {habit.reminder}
+              </span>
+            )}
             {streak > 0 && (
-              <span className="streak" aria-label={`Sequência de ${streak} ${streak === 1 ? 'dia' : 'dias'}`}>
-                <Icon name="Flame" size={13} strokeWidth={2.4} />
+              <span className="streak" aria-label={`Sequência de ${streak} ${isWeekly(habit) ? 'semanas' : 'dias'}`}>
+                <Icon name={isAvoid(habit) ? 'ShieldCheck' : 'Flame'} size={13} strokeWidth={2.4} />
                 <RollingNumber value={streak} />
+                {isWeekly(habit) && <span className="streak-unit">{streakShort(habit)}</span>}
               </span>
             )}
           </span>
         </span>
       </button>
-      <CheckButton habit={habit} count={count} onPress={() => onToggle(habit)} />
+      <CheckButton habit={habit} count={count} onPress={() => onToggle(habit)} timerRunning={timerRunning} />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Humor do dia                                                        */
+/* ------------------------------------------------------------------ */
+function MoodPicker({ value, onChange, isToday }) {
+  return (
+    <div className="mood">
+      <span className="mood-label">{isToday ? 'Como está o seu dia?' : 'Como foi o dia?'}</span>
+      <div className="mood-row" role="radiogroup" aria-label="Humor do dia">
+        {MOODS.map((m) => (
+          <motion.button
+            key={m.value}
+            type="button"
+            role="radio"
+            aria-checked={value === m.value}
+            aria-label={m.label}
+            className={`mood-btn${value === m.value ? ' is-on' : ''}`}
+            onClick={() => onChange(value === m.value ? 0 : m.value)}
+            whileTap={{ scale: 0.88 }}
+            transition={SPRING.press}
+          >
+            <Icon name={m.icon} size={22} strokeWidth={value === m.value ? 2.3 : 1.8} />
+          </motion.button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -291,30 +357,37 @@ function HabitRow({ habit, count, streak, onToggle, onEdit }) {
 /* ------------------------------------------------------------------ */
 /* Tela Hoje                                                           */
 /* ------------------------------------------------------------------ */
-export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onEdit, onCreate, headerRight }) {
+export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onOpen, onCreate, onManage, onMood, onEndBreak, timer, headerRight }) {
   const selectedDate = fromKey(selectedKey);
   const isToday = selectedKey === keyOf(today);
-  const scheduled = data.habits.filter((h) => isScheduled(h, selectedDate));
-  const unscheduled = data.habits.filter((h) => !isScheduled(h, selectedDate));
-  const summary = daySummary(data.habits, data.log, selectedDate);
+  const active = activeHabits(data);
+  const listed = active.filter((h) => isListed(h, selectedDate));
+  const unlisted = active.filter((h) => !isListed(h, selectedDate));
+  const summary = daySummary(data, selectedDate);
   const percent = Math.round(summary.partial * 100);
+  const pause = breakOn(data, selectedKey);
 
-  const ringItems = PERIODS.flatMap((p) => scheduled.filter((h) => h.period === p.id)).map((h) => ({
-    id: h.id,
-    color: colorOf(h.color).value,
-    frac: countOf(data.log, selectedKey, h.id) / h.target,
-  }));
+  const ringItems = PERIODS.flatMap((p) => listed.filter((h) => h.period === p.id))
+    .filter((h) => !pause && (isScheduled(h, selectedDate, data) || (isWeekly(h) && isDone(h, data.log, selectedKey))))
+    .map((h) => ({ id: h.id, color: colorOf(h.color).value, frac: countOf(data.log, selectedKey, h.id) / h.target }));
 
   const streaks = useMemo(() => {
     const out = {};
-    for (const h of data.habits) out[h.id] = currentStreak(h, data.log, today);
+    for (const h of data.habits) out[h.id] = currentStreak(h, data, today);
     return out;
   }, [data, today]);
 
-  const groups = PERIODS.map((p) => ({ ...p, habits: scheduled.filter((h) => h.period === p.id) })).filter((g) => g.habits.length);
+  const groups = PERIODS.map((p) => ({ ...p, habits: listed.filter((h) => h.period === p.id) })).filter((g) => g.habits.length);
   const remaining = summary.total - summary.done;
-  const headline =
-    summary.total === 0 ? 'Nada programado' : remaining === 0 ? 'Dia completo' : isToday ? `Faltam ${remaining}` : `${remaining} ficaram pendentes`;
+  const headline = pause
+    ? 'Dia em pausa'
+    : summary.total === 0
+      ? 'Nada obrigatório hoje'
+      : remaining === 0
+        ? 'Dia completo'
+        : isToday
+          ? `Faltam ${remaining}`
+          : `${remaining} ficaram pendentes`;
 
   return (
     <div className="today">
@@ -344,21 +417,37 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onE
 
         <WeekStrip data={data} selectedKey={selectedKey} onSelect={onSelectDay} today={today} />
 
+        {pause && (
+          <div className="pause-banner">
+            <Icon name="Palmtree" size={20} />
+            <p className="flex-1 min-w-0">
+              Pausa até <strong>{shortDate(pause.end)}</strong>. Suas sequências estão protegidas.
+            </p>
+            {isToday && (
+              <button type="button" className="btn-secondary sm" onClick={() => onEndBreak(pause)}>
+                Encerrar
+              </button>
+            )}
+          </div>
+        )}
+
         <section className="progress" aria-label="Progresso do dia">
-          <DayRing items={ringItems} done={summary.done} total={summary.total} percent={percent} />
+          <DayRing items={ringItems} done={summary.done} total={summary.total} percent={percent} paused={!!pause} />
           <div className="progress-side">
             <p className="progress-head">{headline}</p>
             <ul className="period-list">
               {groups.map((g) => {
-                const d = g.habits.filter((h) => isDone(h, data.log, selectedKey)).length;
+                const req = g.habits.filter((h) => !isWeekly(h));
+                if (!req.length) return null;
+                const d = req.filter((h) => isDone(h, data.log, selectedKey)).length;
                 return (
                   <li key={g.id} className="period-item">
                     <span className="period-name">{PERIOD_SHORT[g.id]}</span>
                     <span className="period-bar" aria-hidden="true">
-                      <motion.span className="period-bar-fill" initial={false} animate={{ scaleX: d / g.habits.length }} transition={SPRING.progress} />
+                      <motion.span className="period-bar-fill" initial={false} animate={{ scaleX: d / req.length }} transition={SPRING.progress} />
                     </span>
                     <span className="period-count">
-                      {d}/{g.habits.length}
+                      {d}/{req.length}
                     </span>
                   </li>
                 );
@@ -366,6 +455,8 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onE
             </ul>
           </div>
         </section>
+
+        <MoodPicker value={(data.moods && data.moods[selectedKey]) || 0} onChange={(m) => onMood(selectedKey, m)} isToday={isToday} />
       </div>
 
       <div className="today-main">
@@ -391,14 +482,24 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onE
               </div>
               <div className="group">
                 {g.habits.map((h) => (
-                  <HabitRow key={h.id} habit={h} count={countOf(data.log, selectedKey, h.id)} streak={streaks[h.id]} onToggle={onToggle} onEdit={onEdit} />
+                  <HabitRow
+                    key={h.id}
+                    habit={h}
+                    data={data}
+                    dayKey={selectedKey}
+                    today={today}
+                    streak={streaks[h.id]}
+                    onToggle={onToggle}
+                    onOpen={onOpen}
+                    timerRunning={!!timer && timer.habitId === h.id && timer.day === selectedKey}
+                  />
                 ))}
               </div>
             </section>
           );
         })}
 
-        {unscheduled.length > 0 && (
+        {unlisted.length > 0 && (
           <section className="flex flex-col gap-2" aria-labelledby="sec-off">
             <div className="section-head">
               <h2 id="sec-off" className="is-quiet">
@@ -406,8 +507,8 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onE
               </h2>
             </div>
             <div className="off-list">
-              {unscheduled.map((h) => (
-                <button key={h.id} type="button" className="off-item" onClick={() => onEdit(h)} style={{ '--c': colorOf(h.color).value }}>
+              {unlisted.map((h) => (
+                <button key={h.id} type="button" className="off-item" onClick={() => onOpen(h)} style={{ '--c': colorOf(h.color).value }}>
                   <Icon name={h.icon} size={15} />
                   <span>{h.name}</span>
                 </button>
@@ -415,6 +516,11 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onE
             </div>
           </section>
         )}
+
+        <button type="button" className="manage-link" onClick={onManage}>
+          <Icon name="ListOrdered" size={17} />
+          Organizar hábitos, arquivo e pausas
+        </button>
       </div>
     </div>
   );

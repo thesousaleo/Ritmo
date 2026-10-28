@@ -59,3 +59,38 @@ revoke all on public.profiles, public.habits, public.checkins from anon;
 grant select, insert, update, delete on public.profiles, public.habits, public.checkins to authenticated;
 
 alter publication supabase_realtime add table public.profiles, public.habits, public.checkins;
+
+-- ===================================================================
+-- v2 (migrações ritmo_v2_features e ritmo_weekly_summary_cron)
+-- ===================================================================
+
+alter table public.habits
+  add column kind text not null default 'build' check (kind in ('build', 'avoid')),
+  add column freq text not null default 'days' check (freq in ('days', 'weekly')),
+  add column per_week smallint not null default 3 check (per_week between 1 and 7),
+  add column duration_min smallint not null default 0 check (duration_min between 0 and 240),
+  add column reminder text check (reminder is null or reminder ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+  add column archived boolean not null default false;
+
+alter table public.checkins add column note text not null default '' check (char_length(note) <= 280);
+
+alter table public.profiles
+  add column breaks jsonb not null default '[]'::jsonb check (jsonb_typeof(breaks) = 'array'),
+  add column weekly_email boolean not null default false;
+
+create table public.moods (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  day date not null,
+  mood smallint not null check (mood between 0 and 5),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, day)
+);
+-- (RLS, grants e publicação realtime iguais às demais tabelas)
+
+-- Token interno para o cron chamar a Edge Function weekly-summary
+create schema if not exists private;
+create table private.app_secrets (name text primary key, value text not null);
+-- public.check_cron_token(token) security definer, executável só por service_role
+
+-- Domingo 22:00 UTC = 19:00 em Brasília
+-- select cron.schedule('ritmo-resumo-semanal', '0 22 * * 0', $$ select net.http_post(...) $$);

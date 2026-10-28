@@ -96,7 +96,7 @@ export function Segmented({ id, options, value, onChange, label }) {
  * Celular: bottom sheet com mola na entrada, arrasto para fechar e saída curta.
  * Desktop: diálogo centralizado (escala 0.96 → 1 + opacidade), sem arrasto.
  */
-export function Sheet({ desktop, title, onClose, as = 'div', onSubmit, footer, children, style, labelId = 'sheet-title' }) {
+export function Sheet({ desktop, title, onClose, as = 'div', onSubmit, footer, children, style, labelId = 'sheet-title', wide = false }) {
   const drag = useDragControls();
   const panelRef = useRef(null);
   const Panel = as === 'form' ? motion.form : motion.div;
@@ -154,7 +154,7 @@ export function Sheet({ desktop, title, onClose, as = 'div', onSubmit, footer, c
         <Panel
           ref={panelRef}
           tabIndex={-1}
-          className={desktop ? 'sheet is-modal' : 'sheet'}
+          className={`sheet${desktop ? ' is-modal' : ''}${wide ? ' is-wide' : ''}`}
           role="dialog"
           aria-modal="true"
           aria-labelledby={labelId}

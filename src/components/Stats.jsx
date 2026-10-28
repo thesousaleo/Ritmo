@@ -3,25 +3,30 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Icon, AnimatedNumber, SPRING, swapProps } from './ui.jsx';
 import { PageHeader } from './Today.jsx';
 import {
-  WEEKDAY_LETTER, WEEKDAY_SHORT, colorOf, keyOf, addDays, fmtLong, fmtShort, fmtMonth,
-  isScheduled, isDone, currentStreak, bestStreak, daySummary,
+  WEEKDAY_LETTER, WEEKDAY_SHORT, MOODS, colorOf, keyOf, addDays, fmtLong, fmtShort, fmtMonth,
+  currentStreak, daySummary, habitRate, activeHabits, isWeekly, isAvoid, streakShort, moodInsights, milestoneGallery,
 } from '../lib/habits.js';
 
-function heatLevel(ratio) {
-  if (ratio === null || ratio === undefined) return -1;
-  if (ratio === 0) return 0;
-  if (ratio < 0.34) return 1;
-  if (ratio < 0.67) return 2;
-  if (ratio < 1) return 3;
+function heatLevel(s) {
+  if (!s) return -1;
+  if (s.paused) return 'p';
+  if (s.ratio === null) return -1;
+  if (s.ratio === 0) return 0;
+  if (s.ratio < 0.34) return 1;
+  if (s.ratio < 0.67) return 2;
+  if (s.ratio < 1) return 3;
   return 4;
 }
 
-export function StatsView({ data, today, weeks = 18, onReset, headerRight }) {
+const moodIcon = (v) => (MOODS[Math.min(4, Math.max(0, Math.round(v) - 1))] || MOODS[2]).icon;
+
+export function StatsView({ data, today, weeks = 18, onReset, onOpen, headerRight }) {
   const todayKey = keyOf(today);
   const [picked, setPicked] = useState(todayKey);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetError, setResetError] = useState('');
   const [resetting, setResetting] = useState(false);
+  const active = activeHabits(data);
 
   const { cells, months } = useMemo(() => {
     const end = addDays(today, 6 - today.getDay());
@@ -33,7 +38,7 @@ export function StatsView({ data, today, weeks = 18, onReset, headerRight }) {
         const date = addDays(start, w * 7 + dow);
         const k = keyOf(date);
         const future = k > todayKey;
-        const s = future ? null : daySummary(data.habits, data.log, date);
+        const s = future ? null : daySummary(data, date);
         cells.push({ k, date, future, s, w, dow });
         if ((date.getDate() === 1 || (w === 0 && dow === 0)) && (!months.length || months[months.length - 1].w !== w)) {
           months.push({ w, label: fmtMonth.format(date).replace('.', '') });
@@ -50,7 +55,7 @@ export function StatsView({ data, today, weeks = 18, onReset, headerRight }) {
       let done = 0;
       let total = 0;
       for (let d = from; d <= to; d = addDays(d, 1)) {
-        const s = daySummary(data.habits, data.log, d);
+        const s = daySummary(data, d);
         done += s.done;
         total += s.total;
       }
@@ -60,34 +65,24 @@ export function StatsView({ data, today, weeks = 18, onReset, headerRight }) {
     for (let i = 0; i < 7; i++) {
       const d = addDays(sunday, i);
       const future = d > today;
-      days.push({ d, future, s: future ? null : daySummary(data.habits, data.log, d) });
+      days.push({ d, future, s: future ? null : daySummary(data, d) });
     }
     return { days, thisRate: rate(sunday, today), lastRate: rate(addDays(sunday, -7), addDays(sunday, -1)) };
   }, [data, today]);
 
   const perHabit = useMemo(
-    () =>
-      data.habits.map((h) => {
-        let done = 0;
-        let total = 0;
-        for (let i = 0; i < 30; i++) {
-          const d = addDays(today, -i);
-          if (!isScheduled(h, d)) continue;
-          if (i === 0 && !isDone(h, data.log, keyOf(d))) continue;
-          total++;
-          if (isDone(h, data.log, keyOf(d))) done++;
-        }
-        return { h, rate: total ? done / total : 0, current: currentStreak(h, data.log, today), best: bestStreak(h, data.log, today) };
-      }),
-    [data, today]
+    () => active.map((h) => ({ h, rate: habitRate(h, data, today).rate, current: currentStreak(h, data, today) })),
+    [data, today] // eslint-disable-line react-hooks/exhaustive-deps
   );
-
-  const top = perHabit.reduce((a, b) => (b.best > (a ? a.best : -1) ? b : a), null);
+  const gallery = useMemo(() => milestoneGallery(data, today), [data, today]);
+  const insights = useMemo(() => moodInsights(data, today).slice(0, 4), [data, today]);
+  const top = gallery.reduce((a, b) => (b.best > (a ? a.best : -1) ? b : a), null);
+  const reachedCount = gallery.reduce((n, g) => n + g.marks.filter((m) => m.reached).length, 0);
 
   const perfectDays = useMemo(() => {
     let n = 0;
     for (let i = 1; i <= 30; i++) {
-      const s = daySummary(data.habits, data.log, addDays(today, -i));
+      const s = daySummary(data, addDays(today, -i));
       if (s.total && s.done === s.total) n++;
     }
     return n;
@@ -96,10 +91,13 @@ export function StatsView({ data, today, weeks = 18, onReset, headerRight }) {
   const pickedCell = cells.find((c) => c.k === picked);
   const pickedText =
     pickedCell && pickedCell.s
-      ? pickedCell.s.total
-        ? `${pickedCell.s.done} de ${pickedCell.s.total} hábitos concluídos`
-        : 'Nenhum hábito programado'
+      ? pickedCell.s.paused
+        ? 'Dia em pausa'
+        : pickedCell.s.total
+          ? `${pickedCell.s.done} de ${pickedCell.s.total} hábitos concluídos`
+          : 'Nenhum hábito obrigatório'
       : '';
+  const pickedMood = pickedCell && data.moods && data.moods[pickedCell.k];
   const delta = Math.round((week.thisRate - week.lastRate) * 100);
 
   const doReset = async () => {
@@ -154,7 +152,7 @@ export function StatsView({ data, today, weeks = 18, onReset, headerRight }) {
                   key={c.k}
                   type="button"
                   disabled={c.future}
-                  className={`heat-cell lv${heatLevel(c.s ? c.s.ratio : null)}${picked === c.k ? ' is-picked' : ''}${c.future ? ' is-future' : ''}`}
+                  className={`heat-cell lv${heatLevel(c.s)}${picked === c.k ? ' is-picked' : ''}${c.future ? ' is-future' : ''}`}
                   style={{ gridColumn: c.w + 1, gridRow: c.dow + 1 }}
                   onClick={() => setPicked(c.k)}
                   aria-label={`${fmtLong.format(c.date)}${c.s && c.s.total ? `: ${c.s.done} de ${c.s.total}` : ''}`}
@@ -166,7 +164,8 @@ export function StatsView({ data, today, weeks = 18, onReset, headerRight }) {
         {pickedCell && (
           <p className="heat-info" aria-live="polite">
             <span className="heat-info-date">{fmtShort.format(pickedCell.date).replace(/\./g, '')}</span>
-            <span>{pickedText}</span>
+            <span className="flex-1">{pickedText}</span>
+            {pickedMood ? <Icon name={moodIcon(pickedMood)} size={16} aria-label={`Humor: ${MOODS[pickedMood - 1].label}`} /> : null}
           </p>
         )}
       </section>
@@ -212,7 +211,7 @@ export function StatsView({ data, today, weeks = 18, onReset, headerRight }) {
           </h2>
           <p className="mid-num">
             {top ? top.best : 0}
-            <span className="mid-unit">dias</span>
+            <span className="mid-unit">{top && isWeekly(top.h) ? 'semanas' : 'dias'}</span>
           </p>
           {top && (
             <p className="panel-foot" style={{ '--c': colorOf(top.h.color).value }}>
@@ -232,14 +231,74 @@ export function StatsView({ data, today, weeks = 18, onReset, headerRight }) {
         </section>
       </div>
 
+      <section className="panel stats-marks" aria-labelledby="marks-title">
+        <div className="panel-head">
+          <h2 id="marks-title">Marcos</h2>
+          <span className="section-count">{reachedCount} conquistados</span>
+        </div>
+        <ul className="marks">
+          {gallery.map(({ h, marks }) => (
+            <li key={h.id} className="marks-row" style={{ '--c': colorOf(h.color).value }}>
+              <span className="marks-name">
+                <Icon name={h.icon} size={15} />
+                <span className="truncate">{h.name}</span>
+              </span>
+              <span className="marks-badges">
+                {marks.map((m) => (
+                  <span key={m.value} className={`badge${m.reached ? ' is-on' : ''}`} title={`${m.value} ${isWeekly(h) ? 'semanas' : 'dias'}`}>
+                    {m.value}
+                    {isWeekly(h) ? 's' : ''}
+                  </span>
+                ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="panel stats-mood" aria-labelledby="mood-title">
+        <div className="panel-head">
+          <h2 id="mood-title">Humor e hábitos</h2>
+          <span className="section-count">últimos 120 dias</span>
+        </div>
+        {insights.length === 0 ? (
+          <p className="panel-empty">Registre o humor do dia na tela Hoje. Com alguns dias de registro, aparece aqui como cada hábito se relaciona com ele.</p>
+        ) : (
+          <ul className="insights">
+            {insights.map(({ h, withAvg, withoutAvg, diff }) => (
+              <li key={h.id} className="insight" style={{ '--c': colorOf(h.color).value }}>
+                <span className="tile sm">
+                  <Icon name={h.icon} size={16} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="insight-title">{h.name}</span>
+                  <span className="insight-text">
+                    {Math.abs(diff) < 0.15
+                      ? 'Sem diferença clara no humor'
+                      : diff > 0
+                        ? `Humor ${diff.toFixed(1).replace('.', ',')} ponto${diff >= 1.95 ? 's' : ''} melhor nos dias em que ${isAvoid(h) ? 'você evita' : 'você faz'}`
+                        : `Humor ${Math.abs(diff).toFixed(1).replace('.', ',')} ponto${Math.abs(diff) >= 1.95 ? 's' : ''} menor nos dias em que ${isAvoid(h) ? 'você evita' : 'você faz'}`}
+                  </span>
+                </span>
+                <span className="insight-faces" aria-label={`Média ${withAvg.toFixed(1)} com, ${withoutAvg.toFixed(1)} sem`}>
+                  <Icon name={moodIcon(withoutAvg)} size={16} className="opacity-50" />
+                  <Icon name="ArrowRight" size={12} className="opacity-50" />
+                  <Icon name={moodIcon(withAvg)} size={18} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <section className="stats-habits flex flex-col gap-2" aria-labelledby="habits-title">
         <div className="section-head">
           <h2 id="habits-title">Por hábito</h2>
-          <span className="section-count">últimos 30 dias</span>
+          <span className="section-count">toque para ver detalhes</span>
         </div>
         <div className="group">
-          {perHabit.map(({ h, rate, current, best }) => (
-            <div key={h.id} className="row stat-row" style={{ '--c': colorOf(h.color).value }}>
+          {perHabit.map(({ h, rate, current }) => (
+            <button key={h.id} type="button" className="row stat-row" style={{ '--c': colorOf(h.color).value }} onClick={() => onOpen(h)}>
               <span className="tile">
                 <Icon name={h.icon} size={20} />
               </span>
@@ -254,14 +313,13 @@ export function StatsView({ data, today, weeks = 18, onReset, headerRight }) {
               <span className="stat-nums">
                 <span className="stat-rate">{Math.round(rate * 100)}%</span>
                 <span className="stat-streak">
-                  <span className="inline-flex items-center gap-0.5" aria-label={`Sequência atual: ${current}`}>
-                    <Icon name="Flame" size={12} strokeWidth={2.4} />
-                    {current}
-                  </span>
-                  <span>recorde {best}</span>
+                  <Icon name={isAvoid(h) ? 'ShieldCheck' : 'Flame'} size={12} strokeWidth={2.4} />
+                  {current}
+                  {streakShort(h)}
                 </span>
               </span>
-            </div>
+              <Icon name="ChevronRight" size={16} className="row-chevron" />
+            </button>
           ))}
         </div>
       </section>
@@ -278,7 +336,7 @@ export function StatsView({ data, today, weeks = 18, onReset, headerRight }) {
               </motion.div>
             ) : (
               <motion.div key="confirm" className="flex flex-col gap-3" {...swapProps}>
-                <p>Isso apaga todo o histórico, inclusive nos outros aparelhos, e mantém só os hábitos cadastrados. Não dá para desfazer.</p>
+                <p>Isso apaga todo o histórico, notas e humor, inclusive nos outros aparelhos, e mantém só os hábitos cadastrados. Não dá para desfazer.</p>
                 {resetError && <p className="field-error">{resetError}</p>}
                 <div className="flex gap-2">
                   <button type="button" className="btn-secondary" onClick={() => setConfirmReset(false)} disabled={resetting}>
