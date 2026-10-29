@@ -20,7 +20,14 @@ export const COLORS = [
   { id: 'violet', name: 'Violeta', value: '#8A6BEF', on: '#FFFFFF' },
   { id: 'sky', name: 'Céu', value: '#2A9FD6', on: '#FFFFFF' },
 ];
-export const colorOf = (id) => COLORS.find((c) => c.id === id) || COLORS[0];
+const isHexColor = (v) => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+const onHex = (hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  const lum = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+  return lum > 0.62 ? '#14161A' : '#FFFFFF';
+};
+/** Cor da paleta pelo id, ou uma cor personalizada em hex (#RRGGBB). */
+export const colorOf = (id) => COLORS.find((c) => c.id === id) || (isHexColor(id) ? { id, name: 'Personalizada', value: id, on: onHex(id) } : COLORS[0]);
 
 export const ICON_CHOICES = [
   'GlassWater', 'Leaf', 'Dumbbell', 'Footprints', 'BookOpen', 'Moon',

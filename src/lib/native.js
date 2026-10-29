@@ -5,6 +5,7 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { isWeekly, inBreak, keyOf, todayDate } from './habits.js';
 import { reminderAt } from './tasks.js';
+import { fmtTime } from './prefs.js';
 import { eventOccurrences } from './calendar.js';
 
 export const isNative = Capacitor.isNativePlatform();
@@ -31,7 +32,16 @@ export function upcomingReminders(data, now = new Date()) {
   for (const t of data.tasks || []) {
     if (t.done || t.reminder < 0 || !t.date) continue;
     const at = reminderAt(t.date, t.time, t.reminder);
-    if (at && at > now && at < horizon) out.push({ id: oneShotId(`t|${t.id}|${t.date}`), at, title: t.title, body: t.time ? `Às ${t.time}` : 'Para hoje', extra: { taskId: t.id } });
+    if (at && at > now && at < horizon) {
+      out.push({ id: oneShotId(`t|${t.id}|${t.date}`), at, title: t.title, body: t.time ? `Às ${fmtTime(t.time)}` : 'Para hoje', extra: { taskId: t.id }, action: 'TASK' });
+      // Lembrete insistente: repete a cada 30 minutos (até 4 vezes) enquanto a tarefa não for concluída
+      if (t.nag) {
+        for (let i = 1; i <= 4; i++) {
+          const again = new Date(at.getTime() + i * 30 * 60000);
+          if (again < horizon) out.push({ id: oneShotId(`t|${t.id}|${t.date}|n${i}`), at: again, title: t.title, body: 'Ainda pendente', extra: { taskId: t.id }, action: 'TASK' });
+        }
+      }
+    }
   }
   const fromK = keyOf(now);
   const toK = keyOf(horizon);
@@ -39,7 +49,7 @@ export function upcomingReminders(data, now = new Date()) {
     const ev = o.ev;
     const at = reminderAt(o.date, ev.allDay ? '' : ev.start, ev.reminder);
     if (at && at > now && at < horizon)
-      out.push({ id: oneShotId(`e|${o.id}`), at, title: ev.title, body: ev.allDay ? 'Hoje, dia inteiro' : `Às ${ev.start}${ev.location ? `, ${ev.location}` : ''}`, extra: { eventId: ev.id, date: o.date } });
+      out.push({ id: oneShotId(`e|${o.id}`), at, title: ev.title, body: ev.allDay ? 'Hoje, dia inteiro' : `Às ${fmtTime(ev.start)}${ev.location ? `, ${ev.location}` : ''}`, extra: { eventId: ev.id, date: o.date } });
   }
   return out.sort((a, b) => a.at - b.at).slice(0, MAX_ONE_SHOT);
 }
@@ -86,10 +96,19 @@ export async function syncReminders(data, { ask = false } = {}) {
   if (perm !== 'granted' || (!wanted.length && !oneShots.length)) return perm;
   await ensureChannel();
 
-  const notifications = oneShots.map((n) => ({ id: n.id, title: n.title, body: n.body, channelId: CHANNEL, schedule: { at: n.at, allowWhileIdle: true }, extra: n.extra }));
-  // Hábitos não lembram durante uma pausa
-  if (inBreak(data, keyOf(todayDate()))) wanted.length = 0;
-  for (const h of wanted) {
+  const notifications = oneShots.map((n) => ({
+    id: n.id,
+    title: n.title,
+    body: n.body,
+    channelId: CHANNEL,
+    schedule: { at: n.at, allowWhileIdle: true },
+    extra: n.extra,
+    ...(n.action ? { actionTypeId: n.action } : {}),
+  }));
+  // Hábitos não lembram durante uma pausa (geral ou só daquele hábito)
+  const todayK = keyOf(todayDate());
+  if (inBreak(data, todayK)) wanted.length = 0;
+  for (const h of wanted.filter((x) => !inBreak(data, todayK, x))) {
     const [hour, minute] = h.reminder.split(':').map(Number);
     const days = isWeekly(h) ? [0, 1, 2, 3, 4, 5, 6] : h.days;
     for (const d of days) {
@@ -130,6 +149,30 @@ export async function cancelTimerDone() {
     await LocalNotifications.cancel({ notifications: [{ id: TIMER_ID }] });
   } catch (e) {
     /* nada agendado */
+  }
+}
+
+/** Notificação fixa enquanto o foco roda (mostra até que horas vai). */
+const ONGOING_ID = 11;
+export async function showFocusOngoing(label, endAt) {
+  if (!isNative) return;
+  try {
+    if ((await notificationPermission(false)) !== 'granted') return;
+    await ensureChannel();
+    const until = endAt ? new Date(endAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+    await LocalNotifications.schedule({
+      notifications: [{ id: ONGOING_ID, title: label, body: until ? `Até ${until}` : 'Cronômetro rodando', channelId: CHANNEL, ongoing: true, autoCancel: false, silent: true, schedule: { at: new Date(Date.now() + 800) } }],
+    });
+  } catch (e) {
+    /* opcional */
+  }
+}
+export async function hideFocusOngoing() {
+  if (!isNative) return;
+  try {
+    await LocalNotifications.cancel({ notifications: [{ id: ONGOING_ID }] });
+  } catch (e) {
+    /* nada */
   }
 }
 

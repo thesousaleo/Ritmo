@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Icon, TaskCheck, EASE_OUT } from '../ui.jsx';
 import { colorOf } from '../../lib/habits.js';
-import { dueLabel, isOverdue, minutesOf, listById, priorityOf } from '../../lib/tasks.js';
+import { dueLabel, isOverdue, minutesOf, listById, priorityOf, dayLabel, daysBetween, fmtMoney, ENERGY } from '../../lib/tasks.js';
 import { dragProps } from '../../lib/dnd.js';
 
 const nowMinutes = () => {
@@ -43,7 +43,10 @@ export function TaskRow({ task, data, todayKey, onToggle, onOpen, selected, show
   const doneItems = items.filter((c) => c.done).length;
   const p = priorityOf(task.priority);
   const due = hideDate ? task.time || '' : dueLabel(task, todayKey);
-  const hasMeta = due || task.repeat || items.length || task.notes || (task.tags || []).length || list || task.reminder >= 0;
+  const deadlineSoon = task.deadline && !task.done && daysBetween(todayKey, task.deadline) <= 1;
+  const assignee = task.assignee ? memberName(data, task) : '';
+  const hasMeta =
+    due || task.repeat || items.length || task.notes || (task.tags || []).length || list || task.reminder >= 0 || task.deadline || task.energy || task.amount !== null || (task.attachments || []).length || task.place;
 
   return (
     <div
@@ -66,7 +69,21 @@ export function TaskRow({ task, data, todayKey, onToggle, onOpen, selected, show
         {hasMeta && !compact && (
           <span className="trow-meta">
             {due && <span className={`tmeta${overdue ? ' is-late' : ''}`}>{due}</span>}
+            {task.deadline && (
+              <span className={`tmeta${deadlineSoon ? ' is-late' : ''}`} title="Prazo final">
+                <Icon name="Flag" size={12} /> {dayLabel(task.deadline, todayKey)}
+              </span>
+            )}
+            {task.amount !== null && task.amount !== undefined && <span className="tmeta is-money">{fmtMoney(task.amount)}</span>}
             {task.repeat && <Icon name="Repeat" size={12} className="tmeta-icon" aria-label="Repete" />}
+            {task.energy > 0 && <Icon name={ENERGY[task.energy].icon} size={13} className="tmeta-icon" aria-label={`Energia ${ENERGY[task.energy].short.toLowerCase()}`} />}
+            {task.place && <Icon name="MapPin" size={12} className="tmeta-icon" aria-label="Lembrete por lugar" />}
+            {(task.attachments || []).length > 0 && <Icon name="Paperclip" size={12} className="tmeta-icon" aria-label="Tem anexos" />}
+            {(task.postponed || 0) >= 3 && !task.done && (
+              <span className="tmeta is-warn" title={`Adiada ${task.postponed} vezes`}>
+                <Icon name="Redo2" size={12} /> {task.postponed}
+              </span>
+            )}
             {task.reminder >= 0 && !task.done && <Icon name="Bell" size={12} className="tmeta-icon" aria-label="Com lembrete" />}
             {items.length > 0 && (
               <span className="tmeta">
@@ -89,8 +106,24 @@ export function TaskRow({ task, data, todayKey, onToggle, onOpen, selected, show
         )}
       </div>
       {compact && due && <span className={`tmeta${overdue ? ' is-late' : ''}`}>{due}</span>}
+      {assignee && (
+        <span className="mini-avatar" title={`Responsável: ${assignee}`}>
+          {assignee.charAt(0).toUpperCase()}
+        </span>
+      )}
     </div>
   );
+}
+
+/** Nome de quem é responsável pela tarefa (lista compartilhada). */
+export function memberName(data, task) {
+  const id = task.assignee;
+  if (!id) return '';
+  const s = (data.shares || []).find((x) => x.memberId === id);
+  if (s) return s.memberName || s.memberEmail || 'Membro';
+  const o = (data.shares || []).find((x) => x.ownerId === id);
+  if (o) return o.ownerName || 'Dono da lista';
+  return 'Você';
 }
 
 export const taskTimeMinutes = (t) => (t.time ? minutesOf(t.time) : null);

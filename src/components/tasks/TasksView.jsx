@@ -6,9 +6,20 @@ import { TaskRow } from './TaskRow.jsx';
 import { QuickAdd } from './QuickAdd.jsx';
 import { KanbanBoard } from './KanbanBoard.jsx';
 import { colorOf, fromKey, fmtLong, greetingFor, isListed, countOf, activeHabits, isAvoid } from '../../lib/habits.js';
-import { groupsFor, viewMeta, INBOX_ID } from '../../lib/tasks.js';
+import { groupsFor, viewMeta, INBOX_ID, fmtMoney } from '../../lib/tasks.js';
 import { eventOccurrences } from '../../lib/calendar.js';
 import { useDragMonitor } from '../../lib/dnd.js';
+import { dayLoad } from '../../lib/plan.js';
+import { billsSummary, countdowns } from '../../lib/insights.js';
+import { fmtTime } from '../../lib/prefs.js';
+import { ritualFor } from '../Planner.jsx';
+
+const RITUAL_COPY = {
+  plan: { icon: 'Sunrise', text: 'Planejar o dia' },
+  shutdown: { icon: 'Sunset', text: 'Encerrar o dia' },
+  review: { icon: 'CalendarCheck', text: 'Revisão semanal' },
+};
+let dismissedRitual = null;
 
 function TodayAgenda({ data, todayKey, onOpenEvent }) {
   const occ = eventOccurrences(data.events, todayKey, todayKey).sort((a, b) => (a.ev.allDay ? -1 : a.ev.start.localeCompare(b.ev.start)));
@@ -26,7 +37,7 @@ function TodayAgenda({ data, todayKey, onOpenEvent }) {
           const past = !o.ev.allDay && o.ev.end && o.ev.end < nowStr && o.date === todayKey;
           return (
             <button key={o.id} type="button" className={`ev-pill${past ? ' is-past' : ''}`} style={{ '--c': colorOf(o.ev.color).value }} onClick={() => onOpenEvent(o)}>
-              <span className="ev-time">{o.ev.allDay ? 'Dia todo' : `${o.ev.start}${o.ev.end ? `–${o.ev.end}` : ''}`}</span>
+              <span className="ev-time">{o.ev.allDay ? 'Dia todo' : `${fmtTime(o.ev.start)}${o.ev.end ? `–${fmtTime(o.ev.end)}` : ''}`}</span>
               <span className="ev-title">{o.ev.title}</span>
               {o.ev.location && <span className="ev-loc">{o.ev.location}</span>}
             </button>
@@ -95,16 +106,26 @@ function EmptyState({ view, kind }) {
   );
 }
 
-export function TasksView({ store, view, todayKey, desktop, selectedId, onOpen, onOpenLists, onEditList, onOpenEvent, onHabit, headerRight }) {
+export function TasksView({ store, view, todayKey, desktop, selectedId, onOpen, onOpenLists, onEditList, onOpenEvent, onHabit, headerRight, onRitual, onWhatNow, onEditFilter }) {
   const data = store.data;
+  const settings = store.settings;
   const meta = viewMeta(view, data);
   const list = meta.list;
   const kanban = !!(list && list.view === 'kanban');
   const groups = useMemo(() => groupsFor(view, data, todayKey), [view, data, todayKey]);
-  const [collapsed, setCollapsed] = useState({ done: true });
+  const [collapsed, setCollapsed] = useState({ done: true, someday: true });
+  const [, force] = useState(0);
   const listMenu = usePopover();
+  const todayMenu = usePopover();
   const toggleGroup = (id) => setCollapsed((c) => ({ ...c, [id]: !c[id] }));
-  const pendingCount = groups.filter((g) => !g.done).reduce((n, g) => n + g.tasks.length, 0);
+  const pendingCount = groups.filter((g) => !g.done && !g.soft).reduce((n, g) => n + g.tasks.length, 0);
+  const isToday = view === 'today';
+  const load = isToday ? dayLoad(data, todayKey, settings) : null;
+  const ritual = isToday ? ritualFor(data, settings, todayKey) : null;
+  const showRitual = ritual && dismissedRitual !== `${todayKey}:${ritual}`;
+  const cds = isToday ? countdowns(data, todayKey, 2).filter((c) => c.days <= 60) : [];
+  const bills = list && list.kind === 'bills' ? billsSummary(data, list, todayKey.slice(0, 7)) : null;
+  const overdueCount = isToday ? (data.tasks || []).filter((t) => !t.done && t.date && t.date < todayKey).length : 0;
 
   // Soltar uma tarefa sobre um dia (Próximos 7 dias) muda a data
   useDragMonitor((e) => {
@@ -117,9 +138,11 @@ export function TasksView({ store, view, todayKey, desktop, selectedId, onOpen, 
   const subtitle =
     view === 'today'
       ? `${greetingFor(new Date())}${data.name ? `, ${data.name}` : ''}. ${fmtLong.format(fromKey(todayKey)).replace(/^./, (c) => c.toUpperCase())}`
-      : list
-        ? `${pendingCount} ${pendingCount === 1 ? 'tarefa' : 'tarefas'}`
-        : '';
+      : bills
+        ? `${fmtMoney(bills.total)} no mês · ${bills.open > 0 ? `${fmtMoney(bills.open)} a pagar` : 'tudo pago'}`
+        : list
+          ? `${pendingCount} ${pendingCount === 1 ? 'tarefa' : 'tarefas'}`
+          : '';
 
   // Lista/Kanban e menu da lista: no cabeçalho no computador; numa linha própria no celular,
   // para o título da lista ficar com a largura toda.
@@ -141,9 +164,20 @@ export function TasksView({ store, view, todayKey, desktop, selectedId, onOpen, 
     </div>
   );
   const splitBar = !desktop && !!list;
+  const todayTools = isToday && (
+    <button type="button" className="icon-btn ghost" onClick={(e) => todayMenu.open(e)} aria-label="Planejar">
+      <Icon name="Sparkles" size={18} />
+    </button>
+  );
+  const filterTools = meta.kind === 'filter' && meta.filter && (
+    <button type="button" className="icon-btn ghost" onClick={() => onEditFilter(meta.filter)} aria-label="Editar filtro">
+      <Icon name="SlidersHorizontal" size={18} />
+    </button>
+  );
 
   return (
-    <div className={`tasks${kanban ? ' is-kanban' : ''}`}>
+    <div className={`tasks${kanban ? ' is-kanban' : ''}${list && list.cover ? ` has-cover cover-${list.cover}` : ''}`} style={list && list.cover ? { '--c': colorOf(list.color).value } : undefined}>
+      {list && list.cover && <div className="list-cover" aria-hidden="true" />}
       <PageHeader
         title={
           <span className="tasks-title">
@@ -159,8 +193,38 @@ export function TasksView({ store, view, todayKey, desktop, selectedId, onOpen, 
         subtitle={splitBar ? undefined : subtitle}
       >
         {!splitBar && listControls}
+        {todayTools}
+        {filterTools}
         {headerRight}
       </PageHeader>
+
+      {(showRitual || cds.length > 0) && (
+        <div className="today-strip">
+          {showRitual && (
+            <span className="ritual-pill">
+              <button type="button" className="ritual-pill-main" onClick={() => onRitual(ritual)}>
+                <Icon name={RITUAL_COPY[ritual].icon} size={15} /> {RITUAL_COPY[ritual].text}
+              </button>
+              <button
+                type="button"
+                className="ritual-pill-x"
+                aria-label="Dispensar"
+                onClick={() => {
+                  dismissedRitual = `${todayKey}:${ritual}`;
+                  force((n) => n + 1);
+                }}
+              >
+                <Icon name="X" size={12} />
+              </button>
+            </span>
+          )}
+          {cds.map((c) => (
+            <span key={c.ev.id} className="cd-chip" style={{ '--c': colorOf(c.ev.color).value }}>
+              <b>{c.days === 0 ? 'Hoje' : c.days}</b> {c.days === 0 ? '' : c.days === 1 ? 'dia ·' : 'dias ·'} {c.ev.title}
+            </span>
+          ))}
+        </div>
+      )}
 
       {splitBar && (
         <div className="list-bar">
@@ -170,7 +234,15 @@ export function TasksView({ store, view, todayKey, desktop, selectedId, onOpen, 
       )}
 
       {desktop && view !== 'done' && (
-        <QuickAdd data={data} view={view} todayKey={todayKey} desktop onAdd={(fields) => store.tasks.add(fields)} />
+        <QuickAdd
+          data={data}
+          view={view}
+          todayKey={todayKey}
+          desktop
+          onAdd={(fields) => store.tasks.add(fields)}
+          onAddMany={(items) => store.tasks.addMany(items)}
+          onAddEvent={(ev) => store.events.save(ev)}
+        />
       )}
 
       {kanban ? (
@@ -202,6 +274,20 @@ export function TasksView({ store, view, todayKey, desktop, selectedId, onOpen, 
                   {g.color && <i className="title-dot sm" style={{ background: colorOf(g.color).value }} />}
                   <span className="tgroup-title">{g.title}</span>
                   <span className="tgroup-count">{g.tasks.length}</span>
+                  {g.id === 'today' && load && load.over && (
+                    <span
+                      className="load-warn"
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRitual('plan');
+                      }}
+                      title="Mais tarefas do que tempo livre"
+                    >
+                      <Icon name="Gauge" size={13} /> Dia cheio
+                    </span>
+                  )}
                 </button>
                 {!isCollapsed && (
                   <div className="tgroup-body">
@@ -243,18 +329,65 @@ export function TasksView({ store, view, todayKey, desktop, selectedId, onOpen, 
           <Popover key="lm" anchor={listMenu.state.anchor} desktop={desktop} onClose={listMenu.close} title={list.name} width={220} align="end">
             <MenuList
               items={[
-                { key: 'edit', label: 'Editar lista', icon: 'Pencil' },
-                ...(list.id !== INBOX_ID ? [{ key: 'del', label: 'Excluir lista', icon: 'Trash2', danger: true }] : []),
+                { key: 'edit', label: list.ownerId ? 'Detalhes da lista' : 'Editar lista', icon: 'Pencil' },
+                ...(list.id !== INBOX_ID && !list.ownerId ? [{ key: 'share', label: 'Compartilhar', icon: 'UserPlus' }] : []),
+                { key: 'tpl', label: 'Salvar como modelo', icon: 'LayoutTemplate' },
+                ...(list.id !== INBOX_ID
+                  ? [{ divider: true, key: 'd' }, list.ownerId ? { key: 'leave', label: 'Sair da lista', icon: 'LogOut', danger: true } : { key: 'del', label: 'Excluir lista', icon: 'Trash2', danger: true }]
+                  : []),
               ]}
               onPick={(it) => {
                 listMenu.close();
-                if (it.key === 'edit') onEditList(list);
+                if (it.key === 'edit' || it.key === 'share') onEditList(list);
+                if (it.key === 'tpl') {
+                  const source = data.tasks.filter((t) => t.listId === list.id && !t.done);
+                  if (source.length) store.tasks.saveTemplate(list.name, list.icon, source);
+                  else store.showToast('A lista não tem tarefas pendentes para virar modelo');
+                }
+                if (it.key === 'leave') store.lists.leave(list);
                 if (it.key === 'del') store.lists.remove(list.id);
               }}
             />
           </Popover>
         )}
+        {todayMenu.state && (
+          <Popover key="tm" anchor={todayMenu.state.anchor} desktop={desktop} onClose={todayMenu.close} title="Planejar" width={250} align="end">
+            {load && (
+              <div className="px-2 pt-1 pb-2">
+                <LoadLine load={load} />
+              </div>
+            )}
+            <MenuList
+              items={[
+                { key: 'now', label: 'O que faço agora?', icon: 'Compass' },
+                { key: 'plan', label: 'Planejar o dia', icon: 'Sunrise' },
+                ...(overdueCount ? [{ key: 'plan2', label: `Reorganizar atrasadas`, icon: 'Undo2', hint: String(overdueCount) }] : []),
+                { key: 'shutdown', label: 'Encerrar o dia', icon: 'Sunset' },
+                { key: 'review', label: 'Revisão semanal', icon: 'CalendarCheck' },
+              ]}
+              onPick={(it) => {
+                todayMenu.close();
+                if (it.key === 'now') onWhatNow();
+                else onRitual(it.key === 'plan2' ? 'plan' : it.key);
+              }}
+            />
+          </Popover>
+        )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function LoadLine({ load }) {
+  const pct = Math.min(100, Math.round((load.ratio || 0) * 100));
+  return (
+    <div className={`loadbar is-mini${load.over ? ' is-over' : ''}`}>
+      <div className="loadbar-track">
+        <span className="loadbar-fill" style={{ transform: `scaleX(${pct / 100})` }} />
+      </div>
+      <span className="loadbar-text">
+        {Math.round(load.taskMin / 6) / 10}h de tarefas · {Math.round(load.capacity / 6) / 10}h livres
+      </span>
     </div>
   );
 }

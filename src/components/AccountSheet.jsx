@@ -289,7 +289,7 @@ function ExportButton({ onExport }) {
 
 export function AccountSheet({
   desktop, user, recovery, name, status, hasPending, weeklyEmail,
-  onClose, onRename, onLocalName, onSyncNow, onSignOut, onRecoveryDone, onExport, onWeeklyEmail, onTestEmail,
+  onClose, onRename, onLocalName, onSyncNow, onSignOut, onRecoveryDone, onExport, onWeeklyEmail, onTestEmail, onSettings,
 }) {
   const title = recovery ? 'Nova senha' : user ? 'Sua conta' : 'Sincronizar aparelhos';
   return (
@@ -313,6 +313,14 @@ export function AccountSheet({
         <SignedOut localName={name} onLocalName={onLocalName} />
       )}
       {!recovery && <ExportButton onExport={onExport} />}
+      {!recovery && onSettings && (
+        <button type="button" className="settings-link" onClick={onSettings}>
+          <Icon name="Settings2" size={18} />
+          <span className="flex-1 text-left">Ajustes</span>
+          <span className="field-hint">Tema, módulos, feriados, backups</span>
+          <Icon name="ChevronRight" size={16} />
+        </button>
+      )}
     </Sheet>
   );
 }

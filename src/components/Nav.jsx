@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Icon, SPRING, EASE_OUT, useEscape, Portal } from './ui.jsx';
+import { Icon, SPRING, EASE_OUT, useEscape, Portal, Popover, MenuList, usePopover } from './ui.jsx';
 import { statusText } from './Today.jsx';
 import { colorOf } from '../lib/habits.js';
-import { SMART_VIEWS, viewCount, allTags, INBOX_ID } from '../lib/tasks.js';
+import { SMART_VIEWS, viewCount, allTags, INBOX_ID, filtersOf } from '../lib/tasks.js';
 import { useDragMonitor } from '../lib/dnd.js';
 import { keyOf, addDays, fromKey } from '../lib/habits.js';
 
@@ -30,15 +30,22 @@ export function BrandMark({ size = 26 }) {
   );
 }
 
+/** Módulos visíveis, na ordem escolhida nos Ajustes; atalho de teclado = posição. */
+export const visibleModules = (ids) =>
+  (ids && ids.length ? ids : MODULES.map((m) => m.id))
+    .map((id) => MODULES.find((m) => m.id === id))
+    .filter(Boolean)
+    .map((m, i) => ({ ...m, key: String(i + 1) }));
+
 /** Barra fina de módulos (desktop). */
-export function Rail({ module, onModule, onSearch, onAccount, name, status, focusRunning }) {
+export function Rail({ module, modules, onModule, onSearch, onSettings, onAccount, name, status, focusRunning }) {
   return (
     <nav className="rail" aria-label="Módulos">
       <div className="rail-brand" title="Ritmo">
         <BrandMark size={28} />
       </div>
       <div className="rail-items">
-        {MODULES.map((m) => (
+        {visibleModules(modules).map((m) => (
           <button key={m.id} type="button" className={`rail-item${module === m.id ? ' is-on' : ''}`} onClick={() => onModule(m.id)} aria-current={module === m.id ? 'page' : undefined} title={`${m.label} (${m.key})`}>
             {module === m.id && <motion.span layoutId="rail-pill" className="rail-pill" transition={SPRING.indicator} />}
             <span className="rail-icon">
@@ -50,6 +57,12 @@ export function Rail({ module, onModule, onSearch, onAccount, name, status, focu
         ))}
       </div>
       <div className="rail-bottom">
+        <button type="button" className="rail-item" onClick={onSettings} title="Ajustes (,)">
+          <span className="rail-icon">
+            <Icon name="Settings2" size={20} />
+          </span>
+          <span className="rail-label">Ajustes</span>
+        </button>
         <button type="button" className="rail-item" onClick={onSearch} title="Buscar (/)">
           <span className="rail-icon">
             <Icon name="Search" size={20} />
@@ -66,10 +79,14 @@ export function Rail({ module, onModule, onSearch, onAccount, name, status, focu
 }
 
 /** Listas inteligentes, listas do usuário e etiquetas. Também recebe tarefas arrastadas. */
-export function ListsPanel({ data, view, todayKey, onView, onNewList, store }) {
+export function ListsPanel({ data, view, todayKey, onView, onNewList, onNewFilter, onEditFilter, onTemplates, store }) {
   const [tagsOpen, setTagsOpen] = useState(true);
+  const addMenu = usePopover();
   const tags = allTags(data);
   const userLists = data.lists.filter((l) => l.id !== INBOX_ID);
+  const filters = filtersOf(data);
+  const somedayCount = viewCount('someday', data, todayKey);
+  const sharedIds = new Set((data.shares || []).map((x) => x.listId));
 
   useDragMonitor((e) => {
     if (e.phase !== 'drop' || !e.data || e.data.type !== 'task' || !e.target) return;
@@ -83,11 +100,20 @@ export function ListsPanel({ data, view, todayKey, onView, onNewList, store }) {
     }
   });
 
-  const Item = ({ id, label, icon, color, count, dropProps }) => (
-    <button type="button" className={`lp-item${view === id ? ' is-on' : ''}`} onClick={() => onView(id)} aria-current={view === id ? 'page' : undefined} data-drop={dropProps && Object.keys(dropProps).length ? '' : undefined} {...dropProps}>
+  const Item = ({ id, label, icon, color, count, dropProps, shared, onContext }) => (
+    <button
+      type="button"
+      className={`lp-item${view === id ? ' is-on' : ''}`}
+      onClick={() => onView(id)}
+      onContextMenu={onContext}
+      aria-current={view === id ? 'page' : undefined}
+      data-drop={dropProps && Object.keys(dropProps).length ? '' : undefined}
+      {...dropProps}
+    >
       {view === id && <motion.span layoutId="lp-pill" className="lp-pill" transition={SPRING.indicator} />}
       {color ? <i className="lp-dot" style={{ background: colorOf(color).value }} /> : <Icon name={icon} size={18} className="lp-icon" />}
       <span className="lp-label">{label}</span>
+      {shared && <Icon name="Users" size={13} className="lp-shared" aria-label="Compartilhada" />}
       {count > 0 && <span className="lp-count">{count}</span>}
     </button>
   );
@@ -105,16 +131,25 @@ export function ListsPanel({ data, view, todayKey, onView, onNewList, store }) {
             dropProps={v.id.startsWith('list:') ? { 'data-droplist': INBOX_ID } : v.id === 'today' || v.id === 'tomorrow' ? { 'data-dropview': v.id } : {}}
           />
         ))}
+        {(somedayCount > 0 || view === 'someday') && <Item id="someday" label="Algum dia" icon="Cloud" count={somedayCount} />}
       </div>
       <div className="lp-group">
         <div className="lp-head">
           <span>Listas</span>
-          <button type="button" className="icon-btn ghost sm" onClick={onNewList} aria-label="Nova lista">
+          <button type="button" className="icon-btn ghost sm" onClick={(e) => addMenu.open(e)} aria-label="Adicionar lista, modelo ou filtro">
             <Icon name="Plus" size={15} />
           </button>
         </div>
         {userLists.map((l) => (
-          <Item key={l.id} id={`list:${l.id}`} label={l.name} color={l.color} count={viewCount(`list:${l.id}`, data, todayKey)} dropProps={{ 'data-droplist': l.id }} />
+          <Item
+            key={l.id}
+            id={`list:${l.id}`}
+            label={l.name}
+            color={l.color}
+            shared={!!l.ownerId || sharedIds.has(l.id)}
+            count={viewCount(`list:${l.id}`, data, todayKey)}
+            dropProps={{ 'data-droplist': l.id }}
+          />
         ))}
         {userLists.length === 0 && (
           <button type="button" className="lp-empty" onClick={onNewList}>
@@ -122,6 +157,26 @@ export function ListsPanel({ data, view, todayKey, onView, onNewList, store }) {
           </button>
         )}
       </div>
+      {filters.length > 0 && (
+        <div className="lp-group">
+          <div className="lp-head">
+            <span>Filtros</span>
+          </div>
+          {filters.map((f) => (
+            <Item
+              key={f.id}
+              id={`filter:${f.id}`}
+              label={f.name}
+              icon={f.icon || 'Filter'}
+              count={viewCount(`filter:${f.id}`, data, todayKey)}
+              onContext={(e) => {
+                e.preventDefault();
+                onEditFilter && onEditFilter(f);
+              }}
+            />
+          ))}
+        </div>
+      )}
       {tags.length > 0 && (
         <div className="lp-group">
           <button type="button" className="lp-head is-btn" onClick={() => setTagsOpen((o) => !o)} aria-expanded={tagsOpen}>
@@ -137,6 +192,25 @@ export function ListsPanel({ data, view, todayKey, onView, onNewList, store }) {
         <Item id="all" label="Todas" icon="Layers" count={0} />
         <Item id="done" label="Concluídas" icon="CircleCheck" count={0} />
       </div>
+      <AnimatePresence>
+        {addMenu.state && (
+          <Popover key="add" anchor={addMenu.state.anchor} desktop={!!(typeof window !== 'undefined' && window.innerWidth >= 1024)} onClose={addMenu.close} title="Adicionar" width={230}>
+            <MenuList
+              items={[
+                { key: 'list', label: 'Nova lista', icon: 'ListPlus' },
+                { key: 'tpl', label: 'Usar um modelo', icon: 'LayoutTemplate' },
+                { key: 'filter', label: 'Novo filtro', icon: 'Filter' },
+              ]}
+              onPick={(it) => {
+                addMenu.close();
+                if (it.key === 'list') onNewList();
+                if (it.key === 'tpl' && onTemplates) onTemplates();
+                if (it.key === 'filter' && onNewFilter) onNewFilter();
+              }}
+            />
+          </Popover>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -187,6 +261,18 @@ export function ListsDrawer({ open, onClose, ...rest }) {
                   onClose();
                   rest.onNewList();
                 }}
+                onNewFilter={() => {
+                  onClose();
+                  rest.onNewFilter && rest.onNewFilter();
+                }}
+                onEditFilter={(f) => {
+                  onClose();
+                  rest.onEditFilter && rest.onEditFilter(f);
+                }}
+                onTemplates={() => {
+                  onClose();
+                  rest.onTemplates && rest.onTemplates();
+                }}
               />
             </motion.aside>
           </>
@@ -196,15 +282,21 @@ export function ListsDrawer({ open, onClose, ...rest }) {
   );
 }
 
-const TABS = ['tasks', 'calendar', 'matrix', 'focus', 'habits'];
+/** Abas do celular: até cinco; Evolução fica dentro de Hábitos quando os dois estão ligados. */
+export function tabsFor(modules) {
+  const ids = visibleModules(modules).map((m) => m.id);
+  const tabs = ids.includes('habits') ? ids.filter((id) => id !== 'stats') : ids;
+  return tabs.slice(0, 5);
+}
 
-export function TabBar({ module, onModule, focusRunning }) {
+export function TabBar({ module, modules, onModule, focusRunning }) {
+  const tabs = tabsFor(modules);
   return (
     <nav className="tabbar" aria-label="Navegação">
-      <div className="tabbar-inner is-five">
-        {TABS.map((id) => {
+      <div className="tabbar-inner is-five" style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
+        {tabs.map((id) => {
           const m = MODULES.find((x) => x.id === id);
-          const on = module === id || (id === 'habits' && module === 'stats');
+          const on = module === id || (id === 'habits' && module === 'stats' && !tabs.includes('stats'));
           return (
             <button key={id} type="button" className={`tab${on ? ' is-on' : ''}`} onClick={() => onModule(id)} aria-current={on ? 'page' : undefined}>
               <span className="tab-icon">

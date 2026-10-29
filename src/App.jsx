@@ -12,7 +12,12 @@ import { TimerSheet } from './components/TimerSheet.jsx';
 import { ManageSheet } from './components/ManageSheet.jsx';
 import { AccountSheet } from './components/AccountSheet.jsx';
 import { Toast, Celebration } from './components/Overlays.jsx';
-import { Rail, ListsPanel, ListsDrawer, TabBar, Fab, MODULES } from './components/Nav.jsx';
+import { Rail, ListsPanel, ListsDrawer, TabBar, Fab, visibleModules } from './components/Nav.jsx';
+import { SettingsSheet } from './components/SettingsSheet.jsx';
+import { RitualSheet, WhatNowSheet, TemplateSheet, FilterSheet } from './components/Planner.jsx';
+import { LockScreen } from './components/LockScreen.jsx';
+import { useAppearance } from './lib/appearance.js';
+import { useNativeBridges } from './lib/nativeBridges.js';
 import { TasksView } from './components/tasks/TasksView.jsx';
 import { TaskPanel, TaskSheet } from './components/tasks/TaskDetail.jsx';
 import { QuickAdd } from './components/tasks/QuickAdd.jsx';
@@ -37,6 +42,28 @@ const loadUi = () => {
   }
 };
 
+function QuickAddHelp() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="qa-help">
+      <button type="button" className="btn-link self-start" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <Icon name="CircleHelp" size={14} /> O que dá para escrever
+      </button>
+      {open && (
+        <ul className="qa-help-list">
+          <li><b>sexta 9h</b>, <b>dia 15</b>, <b>em 3 dias</b>: data e hora</li>
+          <li><b>todo quinto dia útil</b>, <b>toda última sexta</b>, <b>a cada 2 semanas na terça</b></li>
+          <li><b>3 dias depois de concluir</b>: repete a partir de quando você fizer</li>
+          <li><b>até sexta</b>: prazo final · <b>algum dia</b>: sem pressa</li>
+          <li><b>!1</b> prioridade · <b>#etiqueta</b> · <b>^lista</b> · <b>~leve</b> energia · <b>~30min</b></li>
+          <li><b>R$ 120</b>: valor da conta · <b>@agenda</b>: vira compromisso</li>
+          <li>Cole várias linhas para criar várias tarefas</li>
+        </ul>
+      )}
+    </div>
+  );
+}
+
 const blankHabit = () =>
   normalizeHabit({ id: '', name: '', icon: 'Sprout', color: 'cobalt', period: 'morning', days: ALL_DAYS, target: 1, unit: '', createdAt: keyOf(todayDate()) });
 
@@ -47,7 +74,8 @@ export default function App() {
   const { data, today } = store;
   const todayKey = keyOf(today);
 
-  const [module, setModule] = useState(() => loadUi().module || 'tasks');
+  // Abre na tela inicial escolhida nos Ajustes (ou na última usada, se não houver escolha)
+  const [module, setModule] = useState(() => (store.settings.startModule && store.data.settings && store.data.settings.startModule) || loadUi().module || 'tasks');
   const [view, setView] = useState(() => loadUi().view || 'today');
   const [habitDay, setHabitDay] = useState(todayKey);
   const [taskId, setTaskId] = useState(null);
@@ -62,7 +90,20 @@ export default function App() {
   const [manageOpen, setManageOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [timerOpen, setTimerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [ritual, setRitual] = useState(null); // 'plan' | 'shutdown' | 'review'
+  const [whatNowOpen, setWhatNowOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [filterSheet, setFilterSheet] = useState(null); // { filter? }
   const scrollRef = useRef(null);
+  const modules = store.settings.modules;
+  const resolvedTheme = useAppearance(store.settings);
+  const locked = useNativeBridges(store, todayKey);
+
+  // Módulo desligado nos Ajustes: volta para o primeiro visível
+  useEffect(() => {
+    if (!modules.includes(module) && !(module === 'stats' && modules.includes('habits'))) setModule(modules[0]);
+  }, [modules, module]);
 
   useEffect(() => {
     try {
@@ -75,6 +116,7 @@ export default function App() {
   // Visão apontando para lista ou etiqueta que sumiu volta para Hoje
   useEffect(() => {
     if (view.startsWith('list:') && !viewMeta(view, data).list) setView('today');
+    if (view.startsWith('filter:') && !viewMeta(view, data).filter) setView('today');
   }, [view, data]);
   useEffect(() => {
     if (store.recovery) setAccountOpen(true);
@@ -93,7 +135,10 @@ export default function App() {
     if (taskId && !task) setTaskId(null);
   }, [taskId, task]);
 
-  const ui = { taskId, drawer, quickAdd, listSheet, eventSheet, create, search, habitSheet, habitDetail, manageOpen, accountOpen, timerOpen, module, celebration: store.celebration };
+  const ui = {
+    taskId, drawer, quickAdd, listSheet, eventSheet, create, search, habitSheet, habitDetail, manageOpen, accountOpen, timerOpen, module,
+    celebration: store.celebration, settingsOpen, ritual, whatNowOpen, templatesOpen, filterSheet, modules,
+  };
   const uiRef = useRef(ui);
   uiRef.current = ui;
 
@@ -115,6 +160,7 @@ export default function App() {
 
   const focusTask = (t) => {
     setTaskId(null);
+    setWhatNowOpen(false);
     store.focus.setTarget({ taskId: t.id });
     setModule('focus');
   };
@@ -147,8 +193,11 @@ export default function App() {
       } else if (e.key === '/') {
         e.preventDefault();
         setSearch(true);
+      } else if (e.key === ',') {
+        e.preventDefault();
+        setSettingsOpen(true);
       } else {
-        const m = MODULES.find((x) => x.key === e.key);
+        const m = visibleModules(uiRef.current.modules).find((x) => x.key === e.key);
         if (m) goModule(m.id);
       }
     };
@@ -163,6 +212,11 @@ export default function App() {
       const s = uiRef.current;
       if (s.celebration) store.dismissCelebration();
       else if (s.search) setSearch(false);
+      else if (s.filterSheet) setFilterSheet(null);
+      else if (s.templatesOpen) setTemplatesOpen(false);
+      else if (s.whatNowOpen) setWhatNowOpen(false);
+      else if (s.ritual) setRitual(null);
+      else if (s.settingsOpen) setSettingsOpen(false);
       else if (s.timerOpen) setTimerOpen(false);
       else if (s.create) setCreate(null);
       else if (s.eventSheet) setEventSheet(null);
@@ -174,21 +228,21 @@ export default function App() {
       else if (s.manageOpen) setManageOpen(false);
       else if (s.accountOpen) setAccountOpen(false);
       else if (s.drawer) setDrawer(false);
-      else if (s.module !== 'tasks') setModule('tasks');
+      else if (s.module !== s.modules[0]) setModule(s.modules[0]);
       else NativeApp.minimizeApp();
     });
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const paint = () => {
-      StatusBar.setStyle({ style: mq.matches ? Style.Dark : Style.Light }).catch(() => {});
-      StatusBar.setBackgroundColor({ color: mq.matches ? '#0F1412' : '#ECEFE9' }).catch(() => {});
-    };
-    paint();
-    mq.addEventListener('change', paint);
     return () => {
-      mq.removeEventListener('change', paint);
       Promise.resolve(handle).then((h) => h && h.remove && h.remove());
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Barra de status do Android acompanha o tema efetivo
+  useEffect(() => {
+    if (!isNative) return;
+    const dark = resolvedTheme !== 'light';
+    StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light }).catch(() => {});
+    StatusBar.setBackgroundColor({ color: resolvedTheme === 'black' ? '#000000' : dark ? '#0F1412' : '#ECEFE9' }).catch(() => {});
+  }, [resolvedTheme]);
 
   const accountButton = !desktop && <AccountButton name={data.name} status={store.syncStatus} onClick={() => setAccountOpen(true)} />;
   const searchButton = !desktop && (
@@ -204,7 +258,10 @@ export default function App() {
   );
   const focusRunning = isRunning(store.focus.state);
   const panelMode = desktop && wide && module === 'tasks';
-  const anyOverlay = !!(quickAdd || listSheet || eventSheet || create || habitSheet || habitDetail || manageOpen || accountOpen || timerOpen || (task && !panelMode));
+  const anyOverlay = !!(
+    quickAdd || listSheet || eventSheet || create || habitSheet || habitDetail || manageOpen || accountOpen || timerOpen || (task && !panelMode) ||
+    settingsOpen || ritual || whatNowOpen || templatesOpen || filterSheet
+  );
   const detailHabit = habitDetail && data.habits.find((h) => h.id === habitDetail.habitId);
   const timer = store.habits.timer;
   const timerHabit = timer && data.habits.find((h) => h.id === timer.habitId);
@@ -224,6 +281,9 @@ export default function App() {
         onEditList={(l) => setListSheet({ list: l })}
         onOpenEvent={openEvent}
         onHabit={(h) => habitToggle(h)}
+        onRitual={setRitual}
+        onWhatNow={() => setWhatNowOpen(true)}
+        onEditFilter={(f) => setFilterSheet({ filter: f })}
         headerRight={headerRight}
       />
     );
@@ -286,7 +346,17 @@ export default function App() {
     <MotionConfig reducedMotion="user">
       <div className={`app${desktop ? ' is-desktop' : ''} m-${module}`}>
         {desktop && (
-          <Rail module={module} onModule={goModule} onSearch={() => setSearch(true)} onAccount={() => setAccountOpen(true)} name={data.name} status={store.syncStatus} focusRunning={focusRunning} />
+          <Rail
+            module={module}
+            modules={modules}
+            onModule={goModule}
+            onSearch={() => setSearch(true)}
+            onSettings={() => setSettingsOpen(true)}
+            onAccount={() => setAccountOpen(true)}
+            name={data.name}
+            status={store.syncStatus}
+            focusRunning={focusRunning}
+          />
         )}
         {desktop && module === 'tasks' && (
           <aside className="lists-col" aria-label="Listas">
@@ -294,7 +364,17 @@ export default function App() {
               <span>Tarefas</span>
               <span className="lists-col-date first-up">{fmtLong.format(today)}</span>
             </div>
-            <ListsPanel data={data} view={view} todayKey={todayKey} onView={setView} onNewList={() => setListSheet({})} store={store} />
+            <ListsPanel
+              data={data}
+              view={view}
+              todayKey={todayKey}
+              onView={setView}
+              onNewList={() => setListSheet({})}
+              onNewFilter={() => setFilterSheet({})}
+              onEditFilter={(f) => setFilterSheet({ filter: f })}
+              onTemplates={() => setTemplatesOpen(true)}
+              store={store}
+            />
           </aside>
         )}
 
@@ -310,7 +390,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {!desktop && <TabBar module={module} onModule={goModule} focusRunning={focusRunning} />}
+        {!desktop && <TabBar module={module} modules={modules} onModule={goModule} focusRunning={focusRunning} />}
         {showFab && <Fab onClick={newItem} label={module === 'habits' ? 'Novo hábito' : module === 'calendar' ? 'Adicionar na agenda' : 'Nova tarefa'} />}
 
         {!desktop && (
@@ -325,6 +405,9 @@ export default function App() {
               setModule('tasks');
             }}
             onNewList={() => setListSheet({})}
+            onNewFilter={() => setFilterSheet({})}
+            onEditFilter={(f) => setFilterSheet({ filter: f })}
+            onTemplates={() => setTemplatesOpen(true)}
             store={store}
           />
         )}
@@ -336,8 +419,23 @@ export default function App() {
         <AnimatePresence>
           {quickAdd && (
             <Sheet key="qa" desktop={desktop} title="Nova tarefa" onClose={() => setQuickAdd(null)} className="is-compact">
-              <QuickAdd data={data} view={quickAdd.view} todayKey={todayKey} desktop={false} autoFocus onAdd={(fields) => store.tasks.add(fields)} />
-              <p className="field-hint">Escreva a data e a hora no texto (“sexta 9h”), #etiqueta, !1 para prioridade alta e ^lista.</p>
+              <QuickAdd
+                data={data}
+                view={quickAdd.view}
+                todayKey={todayKey}
+                desktop={false}
+                autoFocus
+                onAdd={(fields) => store.tasks.add(fields)}
+                onAddMany={(items) => {
+                  store.tasks.addMany(items);
+                  setQuickAdd(null);
+                }}
+                onAddEvent={(ev) => {
+                  store.events.save(ev);
+                  setQuickAdd(null);
+                }}
+              />
+              <QuickAddHelp />
             </Sheet>
           )}
         </AnimatePresence>
@@ -348,6 +446,8 @@ export default function App() {
               key="list"
               desktop={desktop}
               initial={listSheet.list}
+              data={data}
+              store={store}
               onClose={() => setListSheet(null)}
               onSave={(form) => {
                 if (listSheet.list) store.lists.update(listSheet.list.id, form);
@@ -510,9 +610,56 @@ export default function App() {
               onExport={store.account.exportCsv}
               onWeeklyEmail={store.account.setWeeklyEmail}
               onTestEmail={store.account.testEmail}
+              onSettings={() => {
+                setAccountOpen(false);
+                setSettingsOpen(true);
+              }}
             />
           )}
         </AnimatePresence>
+
+        <AnimatePresence>{settingsOpen && <SettingsSheet key="settings" desktop={desktop} store={store} todayKey={todayKey} onClose={() => setSettingsOpen(false)} />}</AnimatePresence>
+        <AnimatePresence>
+          {ritual && <RitualSheet key={`ritual-${ritual}`} mode={ritual} desktop={desktop} store={store} todayKey={todayKey} onClose={() => setRitual(null)} onOpenTask={(id) => setTaskId(id)} />}
+        </AnimatePresence>
+        <AnimatePresence>
+          {whatNowOpen && (
+            <WhatNowSheet
+              key="whatnow"
+              desktop={desktop}
+              store={store}
+              onClose={() => setWhatNowOpen(false)}
+              onOpenTask={(id) => {
+                setWhatNowOpen(false);
+                setTaskId(id);
+              }}
+              onFocus={focusTask}
+            />
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {templatesOpen && (
+            <TemplateSheet key="tpl" desktop={desktop} store={store} todayKey={todayKey} defaultListId={view.startsWith('list:') ? view.slice(5) : 'inbox'} onClose={() => setTemplatesOpen(false)} />
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {filterSheet && (
+            <FilterSheet
+              key={(filterSheet.filter && filterSheet.filter.id) || 'new-filter'}
+              desktop={desktop}
+              store={store}
+              todayKey={todayKey}
+              initial={filterSheet.filter}
+              onClose={() => setFilterSheet(null)}
+              onSaved={(f) => {
+                setFilterSheet(null);
+                setView(`filter:${f.id}`);
+                setModule('tasks');
+              }}
+            />
+          )}
+        </AnimatePresence>
+        {locked && <LockScreen onUnlock={locked.unlock} />}
 
         {search && (
           <SearchSheet
