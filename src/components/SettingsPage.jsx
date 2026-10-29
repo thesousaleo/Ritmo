@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Icon, Segmented, EASE_OUT } from './ui.jsx';
-import { COLORS, shortDate } from '../lib/habits.js';
+import { COLORS, shortDate, colorOf } from '../lib/habits.js';
 import { UF_NAMES, holidaysOf } from '../lib/holidays.js';
 import { ALL_MODULES, isHex } from '../lib/settings.js';
 import { MODULES } from './Nav.jsx';
@@ -12,6 +12,7 @@ import {
   openBatterySettings, openExactAlarmSettings, openNotificationSettings, currentPosition, geofenceSupported,
 } from '../lib/ritmoNative.js';
 import { newId } from '../lib/tasks.js';
+import { WIDGETS, taskSources } from '../lib/widgetData.js';
 import { AccountPanel } from './AccountSheet.jsx';
 import { statusText } from './Today.jsx';
 
@@ -55,9 +56,14 @@ const CATEGORIES = [
   { id: 'plan', label: 'Planejamento', icon: 'Sunrise', hint: 'Expediente, capacidade e rituais' },
   { id: 'places', label: 'Lugares', icon: 'MapPin', hint: 'Lembretes ao chegar em casa ou no trabalho' },
   { id: 'device', label: 'Aparelho', icon: 'Smartphone', hint: 'Sons, vibração, bloqueio e ícone' },
+  { id: 'widgets', label: 'Widgets', icon: 'LayoutDashboard', hint: 'Tela inicial: tipos, fundo, cor e texto', android: true },
   { id: 'reminders', label: 'Lembretes', icon: 'BellRing', hint: 'Diagnóstico e permissões' },
   { id: 'backup', label: 'Backups', icon: 'ArchiveRestore', hint: 'Cópias automáticas e restauração' },
 ];
+
+// Widgets só existem no app Android (no site, ?widgets mostra a seção para conferir o visual)
+const SHOW_WIDGETS = isNativeAndroid || (typeof location !== 'undefined' && /[?&]widgets\b/.test(location.search));
+const CATS = CATEGORIES.filter((c) => !c.android || SHOW_WIDGETS);
 
 /* ---------- Aparência ---------- */
 function Look({ s, set }) {
@@ -433,6 +439,87 @@ function Device({ device, setDevice }) {
   );
 }
 
+/* ---------- Widgets ---------- */
+const SAMPLE_ROWS = [
+  { id: 'a', title: 'Revisar a semana', meta: '09:00', color: '#D6453D' },
+  { id: 'b', title: 'Comprar café', meta: '', color: '#A3ADA6' },
+  { id: 'c', title: 'Ligar para a Ana', meta: '18:30', color: '#3F63E8' },
+];
+function Widgets({ store, todayKey }) {
+  const w = store.device.widget || {};
+  const setW = (patch) => store.setDevice({ widget: { ...w, ...patch } });
+  const opacity = Math.max(20, Math.min(100, w.opacity ?? 100));
+  const today = taskSources(store.data, todayKey)[0];
+  const rows = today.tasks.length ? today.tasks.slice(0, 3) : SAMPLE_ROWS;
+  const accent = w.accent ? colorOf(w.accent).value : 'var(--accent)';
+  return (
+    <>
+      <div className="wprev-wall" aria-hidden="true">
+        <div className={`wprev${w.textScale === 'large' ? ' is-large' : ''}`} style={{ '--wp-alpha': `${opacity}%`, '--wp-accent': accent }}>
+          <div className="wprev-head">
+            <b>Hoje</b>
+            <span className="wprev-count">{today.count || ''}</span>
+            <Icon name="Plus" size={17} />
+          </div>
+          {rows.map((t) => (
+            <div className="wprev-row" key={t.id}>
+              <span className="wprev-check" style={{ borderColor: t.color }} />
+              <span className="wprev-title">{t.title}</span>
+              {t.meta && <span className="wprev-meta">{t.meta}</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+      <Group title="Fundo">
+        <div className="set-pad text-size">
+          <span className="text-size-a sm">{opacity}%</span>
+          <input
+            type="range"
+            min="20"
+            max="100"
+            step="10"
+            value={opacity}
+            onChange={(e) => setW({ opacity: Number(e.target.value) })}
+            aria-label="Opacidade do fundo dos widgets"
+          />
+        </div>
+      </Group>
+      <Group title="Cor de destaque">
+        <div className="set-pad">
+          <div className="swatches">
+            <button type="button" className={`swatch is-default${!w.accent ? ' is-on' : ''}`} style={{ '--sw': 'var(--accent)' }} onClick={() => setW({ accent: '' })} aria-label="Igual ao app" aria-pressed={!w.accent} />
+            {COLORS.map((c) => (
+              <button key={c.id} type="button" className={`swatch${w.accent === c.id ? ' is-on' : ''}`} style={{ '--sw': c.value }} onClick={() => setW({ accent: c.id })} aria-label={c.name} aria-pressed={w.accent === c.id} />
+            ))}
+          </div>
+        </div>
+      </Group>
+      <Group title="Texto">
+        <div className="set-pad">
+          <Segmented
+            id="set-wtext"
+            label="Tamanho do texto dos widgets"
+            value={w.textScale === 'large' ? 'large' : 'normal'}
+            onChange={(v) => setW({ textScale: v })}
+            options={[
+              { id: 'normal', label: 'Normal' },
+              { id: 'large', label: 'Grande' },
+            ]}
+          />
+        </div>
+      </Group>
+      <Group
+        title="Tipos de widget"
+        foot="Para colocar: toque e segure num espaço vazio da tela inicial › Widgets › Ritmo. Ao soltar, o widget pergunta o que mostrar e a aparência (igual ao app, claro, escuro, preto ou transparente). Para mudar depois, toque e segure no widget › Reconfigurar."
+      >
+        {WIDGETS.map((x) => (
+          <Row key={x.id} icon={x.icon} label={x.name} hint={`${x.desc} Tamanho inicial ${x.size}.`} />
+        ))}
+      </Group>
+    </>
+  );
+}
+
 /* ---------- Lembretes ---------- */
 function Reminders({ data }) {
   const [diag, setDiag] = useState(null);
@@ -600,7 +687,7 @@ export function SettingsPage({ desktop, store, todayKey, onBack, initial = null,
   const set = store.updateSettings;
   const data = store.data;
   const shown = page || (desktop ? 'account' : null);
-  const cat = CATEGORIES.find((c) => c.id === shown);
+  const cat = CATS.find((c) => c.id === shown);
 
   useEffect(() => {
     if (initial) setPage(initial);
@@ -608,7 +695,7 @@ export function SettingsPage({ desktop, store, todayKey, onBack, initial = null,
 
   const list = (
     <div className={desktop ? 'set-tabs is-side' : 'set-group set-menu'} role="list" aria-label="Seções dos ajustes">
-      {CATEGORIES.map((c) => (
+      {CATS.map((c) => (
         <button
           key={c.id}
           type="button"
@@ -675,6 +762,7 @@ export function SettingsPage({ desktop, store, todayKey, onBack, initial = null,
       {cat.id === 'plan' && <Plan s={s} set={set} />}
       {cat.id === 'places' && <Places s={s} set={set} />}
       {cat.id === 'device' && <Device device={store.device} setDevice={store.setDevice} />}
+      {cat.id === 'widgets' && <Widgets store={store} todayKey={todayKey} />}
       {cat.id === 'reminders' && <Reminders data={data} />}
       {cat.id === 'backup' && <Backups store={store} />}
     </motion.section>

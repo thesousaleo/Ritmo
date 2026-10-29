@@ -323,7 +323,41 @@ public class RitmoNativePlugin extends Plugin {
     public void updateWidget(PluginCall call) {
         String json = call.getString("json", "{}");
         getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("widget", json).apply();
-        RitmoWidget.updateAll(getContext());
+        WidgetRender.updateAll(getContext());
         call.resolve();
+    }
+
+    /** Devolve (e limpa) os toques feitos nos widgets enquanto o app estava fechado. */
+    @PluginMethod
+    public void takeWidgetActions(PluginCall call) {
+        SharedPreferences sp = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String raw = sp.getString("queue", "[]");
+        sp.edit().putString("queue", "[]").apply();
+        JSObject ret = new JSObject();
+        try {
+            ret.put("actions", new JSArray(raw));
+        } catch (Exception e) {
+            ret.put("actions", new JSArray());
+        }
+        call.resolve(ret);
+    }
+
+    private static java.lang.ref.WeakReference<RitmoNativePlugin> live = new java.lang.ref.WeakReference<>(null);
+
+    @Override
+    public void load() {
+        super.load();
+        live = new java.lang.ref.WeakReference<>(this);
+    }
+
+    /** Avisa o app aberto (mesmo em segundo plano) que há toques do widget na fila. */
+    static void emitWidgetAction() {
+        RitmoNativePlugin p = live.get();
+        if (p != null) {
+            try {
+                p.notifyListeners("widgetAction", new JSObject());
+            } catch (Exception ignored) {
+            }
+        }
     }
 }

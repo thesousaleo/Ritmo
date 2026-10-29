@@ -103,9 +103,20 @@ export const openBatterySettings = () => call('openBatterySettings', {}, null);
 export const openExactAlarmSettings = () => call('openExactAlarmSettings', {}, null);
 export const openNotificationSettings = () => call('openNotificationSettings', {}, null);
 
-/* ---------- widget ---------- */
-/** Envia para o widget da tela inicial o resumo de hoje (tarefas e hábitos). */
+/* ---------- widgets ---------- */
+/** Envia para os widgets da tela inicial o pacote montado em widgetData.js. */
 export const updateWidget = (payload) => call('updateWidget', { json: JSON.stringify(payload) }, null);
+/** Toques feitos nos widgets com o app fechado (concluir tarefa, marcar hábito). */
+export async function takeWidgetActions() {
+  const r = await call('takeWidgetActions', {}, null);
+  return (r && Array.isArray(r.actions) && r.actions) || [];
+}
+/** Avisa quando um widget foi tocado com o app aberto em segundo plano. */
+export function onWidgetAction(cb) {
+  if (!Plugin) return () => {};
+  const h = Plugin.addListener('widgetAction', cb);
+  return () => Promise.resolve(h).then((x) => x && x.remove && x.remove());
+}
 
 /* ---------- barra de navegação (gestos/botões) ---------- */
 // Fundo da página e fundo dos painéis por tema; com um painel aberto, a barra continua o painel

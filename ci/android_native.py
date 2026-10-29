@@ -54,18 +54,54 @@ def alias(name, icon, enabled):
             </intent-filter>
         </activity-alias>'''
 
+# Widgets da tela inicial (o nome RitmoWidget fica para os de tarefas já colocados)
+WIDGETS = [
+    ('RitmoWidget', 'Tarefas', 'ritmo_widget_info'),
+    ('HabitsWidget', 'Hábitos', 'widget_habits_info'),
+    ('ProgressWidget', 'Progresso do dia', 'widget_progress_info'),
+    ('AgendaWidget', 'Agenda', 'widget_agenda_info'),
+    ('CountdownWidget', 'Contagem regressiva', 'widget_countdown_info'),
+    ('QuickWidget', 'Atalhos', 'widget_quick_info'),
+]
+widgets = ''.join(f'''
+        <receiver android:name=".{cls}" android:exported="false" android:label="{label}">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/{info}" />
+        </receiver>''' for cls, label, info in WIDGETS)
+
+# Endereços ritmo:// (os widgets abrem tarefa, foco, hábitos, agenda...)
+deep = '''
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ritmo" />
+            </intent-filter>
+        </activity>'''
+if '</activity>' not in m:
+    raise SystemExit('Não achei a MainActivity no AndroidManifest.xml')
+m = m.replace('</activity>', deep, 1)
+
 extra = ''.join([
     alias('IconDefault', '@mipmap/ic_launcher', True),
     alias('IconDark', '@mipmap/ic_alt_dark', False),
     alias('IconMint', '@mipmap/ic_alt_mint', False),
     alias('IconSand', '@mipmap/ic_alt_sand', False),
+    widgets,
     '''
-        <receiver android:name=".RitmoWidget" android:exported="false" android:label="Ritmo">
+        <receiver android:name=".WidgetActionReceiver" android:exported="false" />
+        <activity
+            android:name=".WidgetConfigActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/ritmo_widget_info" />
-        </receiver>
+        </activity>
         <receiver android:name=".GeofenceReceiver" android:exported="false" />
         <receiver android:name=".BootReceiver" android:exported="false">
             <intent-filter>

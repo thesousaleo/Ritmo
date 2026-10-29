@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ritmo_widget_bg">#F2FAFBF8</color>
+    <color name="ritmo_widget_bg_solid">#FAFBF8</color>
     <color name="ritmo_widget_ink">#131A16</color>
     <color name="ritmo_widget_muted">#5A655F</color>
     <color name="ritmo_widget_accent">#3450E6</color>
@@ -10,15 +10,10 @@
     <color name="ritmo_icon_mint_fg">#FFFFFF</color>
     <color name="ritmo_icon_sand_bg">#ECE3D3</color>
     <color name="ritmo_icon_sand_fg">#131A16</color>
-    <string name="ritmo_widget_desc">Tarefas de hoje e hábitos do Ritmo</string>
-    <style name="RitmoWidgetRow">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">@color/ritmo_widget_ink</item>
-        <item name="android:textSize">13sp</item>
-        <item name="android:maxLines">1</item>
-        <item name="android:ellipsize">end</item>
-        <item name="android:paddingTop">3dp</item>
-        <item name="android:paddingBottom">3dp</item>
-    </style>
+    <string name="ritmo_widget_desc">Tarefas de hoje, de uma lista ou da semana, com check</string>
+    <string name="ritmo_widget_habits_desc">Hábitos do dia: toque no círculo para marcar</string>
+    <string name="ritmo_widget_progress_desc">Anel com o progresso do dia</string>
+    <string name="ritmo_widget_agenda_desc">Próximos compromissos</string>
+    <string name="ritmo_widget_countdown_desc">Dias até um evento importante</string>
+    <string name="ritmo_widget_quick_desc">Nova tarefa, foco, hábitos e agenda num toque</string>
 </resources>

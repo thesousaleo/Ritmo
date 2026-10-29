@@ -337,3 +337,24 @@
 .is-desktop .hsum { padding: 18px 22px 18px 18px; }
 .is-desktop .hsum .dayring { width: 104px; height: 104px; }
 .is-desktop .hsum .ring-num { font-size: 26px; }
+
+/* ---------- Ajustes › Widgets: prévia ---------- */
+.wprev-wall {
+  margin: 4px 0 18px; padding: 26px 22px; border-radius: 22px;
+  background: linear-gradient(135deg, #7b8f86 0%, #c9b79a 55%, #6f7fa8 100%);
+  display: flex; justify-content: center;
+}
+.wprev {
+  width: min(100%, 300px); padding: 10px 10px 12px 14px; border-radius: 22px;
+  background: color-mix(in srgb, var(--surface) var(--wp-alpha), transparent);
+  color: var(--ink); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  font-size: 14px;
+}
+.wprev.is-large { font-size: 16px; }
+.wprev-head { display: flex; align-items: center; gap: 8px; height: 32px; }
+.wprev-head b { flex: 1; font-size: 1.05em; }
+.wprev-head svg, .wprev-count { color: var(--wp-accent); font-weight: 700; font-size: 0.86em; }
+.wprev-row { display: flex; align-items: center; gap: 10px; height: 2.3em; }
+.wprev-check { width: 16px; height: 16px; border-radius: 50%; border: 2px solid; flex: none; }
+.wprev-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wprev-meta { color: var(--muted); font-size: 0.86em; }

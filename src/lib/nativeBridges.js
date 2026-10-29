@@ -2,12 +2,12 @@
  * Efeitos que conversam com o Android: bloqueio por digital, widget da tela inicial,
  * lembretes por lugar e ações das notificações (Concluir / Adiar, Feito nos hábitos).
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { App as NativeApp } from '@capacitor/app';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { isNativeAndroid, authenticate, updateWidget, setGeofences } from './ritmoNative.js';
-import { keyOf, fromKey, addDays, activeHabits, isListed, countOf } from './habits.js';
-import { sortTasks } from './tasks.js';
+import { isNativeAndroid, authenticate, updateWidget, setGeofences, takeWidgetActions, onWidgetAction } from './ritmoNative.js';
+import { keyOf, addDays, countOf } from './habits.js';
+import { buildWidgetPayload, applyWidgetAction, collapseWidgetActions, parseRitmoUrl } from './widgetData.js';
 import { snoozeTask } from './native.js';
 
 export function useNativeBridges(store, todayKey, handlers = {}) {
@@ -36,28 +36,24 @@ export function useNativeBridges(store, todayKey, handlers = {}) {
     return () => Promise.resolve(h).then((x) => x && x.remove && x.remove());
   }, [store.device.lock]);
 
-  // Widget: tarefas de hoje e hábitos do dia
-  const widgetSig = JSON.stringify([
-    todayKey,
-    (data.tasks || []).filter((t) => !t.done && t.date && t.date <= todayKey).map((t) => [t.id, t.title, t.time, t.priority]),
-    data.log[todayKey],
-    data.habits.map((h) => [h.id, h.name, h.target, h.archived]),
-  ]);
+  // Widgets da tela inicial: um pacote com tudo o que cada tipo de widget pode mostrar
+  const lastWidget = useRef('');
+  const quarter = Math.floor(Date.now() / 900000); // compromissos que acabaram saem a cada 15 min
+  const widgetJson = useMemo(
+    () =>
+      isNativeAndroid
+        ? JSON.stringify(buildWidgetPayload(data, todayKey, { style: device.widget || {}, theme: handlers.theme || 'light', accent: handlers.accent || '' }))
+        : '',
+    [data, todayKey, device.widget, handlers.theme, handlers.accent, quarter] // eslint-disable-line react-hooks/exhaustive-deps
+  );
   useEffect(() => {
-    if (!isNativeAndroid) return undefined;
+    if (!isNativeAndroid || widgetJson === lastWidget.current) return undefined;
     const id = setTimeout(() => {
-      const day = fromKey(todayKey);
-      const tasks = sortTasks((data.tasks || []).filter((t) => !t.done && t.date && t.date <= todayKey)).slice(0, 8);
-      const habits = activeHabits(data).filter((h) => isListed(h, day));
-      updateWidget({
-        date: todayKey,
-        tasks: tasks.map((t) => ({ id: t.id, title: t.title, time: t.time || '', late: t.date < todayKey, priority: t.priority })),
-        habitsDone: habits.filter((h) => countOf(data.log, todayKey, h.id) >= h.target).length,
-        habitsTotal: habits.length,
-      });
+      lastWidget.current = widgetJson;
+      updateWidget(JSON.parse(widgetJson));
     }, 1200);
     return () => clearTimeout(id);
-  }, [widgetSig]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [widgetJson]);
 
   // Lembretes por lugar: uma cerca por lugar com as tarefas pendentes ligadas a ele
   const fenceSig = JSON.stringify([settings.places, (data.tasks || []).filter((t) => t.place && !t.done).map((t) => [t.id, t.title, t.place])]);
@@ -127,6 +123,49 @@ export function useNativeBridges(store, todayKey, handlers = {}) {
       if (ev.actionId === 'snooze15') snoozeTask(t, s.data, 15);
       if (ev.actionId === 'snooze') snoozeTask(t, s.data, 60);
     });
+    return () => Promise.resolve(h).then((x) => x && x.remove && x.remove());
+  }, []);
+
+  // Toques nos widgets (concluir tarefa, marcar hábito) feitos com o app fechado ou em segundo plano
+  useEffect(() => {
+    if (!isNativeAndroid) return undefined;
+    let busyDrain = false;
+    const drain = async () => {
+      if (busyDrain) return;
+      busyDrain = true;
+      try {
+        const list = collapseWidgetActions(await takeWidgetActions());
+        for (const a of list) applyWidgetAction(storeRef.current, a, keyOf(new Date()));
+      } finally {
+        busyDrain = false;
+      }
+    };
+    drain();
+    const off = onWidgetAction(drain);
+    const h = NativeApp.addListener('appStateChange', ({ isActive }) => isActive && drain());
+    return () => {
+      off();
+      Promise.resolve(h).then((x) => x && x.remove && x.remove());
+    };
+  }, []);
+
+  // Endereços ritmo:// abertos pelos widgets (tarefa, nova tarefa, foco, hábitos, agenda...)
+  useEffect(() => {
+    if (!isNativeAndroid) return undefined;
+    let last = '';
+    const go = (url) => {
+      const link = parseRitmoUrl(url);
+      if (!link || !handlersRef.current.onLink) return;
+      const sig = `${url}|${Math.floor(Date.now() / 1500)}`;
+      if (sig === last) return;
+      last = sig;
+      // Espera a fila do widget entrar antes de abrir (o toque pode ter acabado de mudar algo)
+      setTimeout(() => handlersRef.current.onLink(link), 60);
+    };
+    NativeApp.getLaunchUrl()
+      .then((r) => r && r.url && go(r.url))
+      .catch(() => {});
+    const h = NativeApp.addListener('appUrlOpen', ({ url }) => go(url));
     return () => Promise.resolve(h).then((x) => x && x.remove && x.remove());
   }, []);
 

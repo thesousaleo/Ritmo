@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="36dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical">
+    <FrameLayout
+        android:id="@+id/r_check"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:contentDescription="Marcar hábito">
+        <ImageView
+            android:id="@+id/r_ring"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="7dp"
+            android:src="@drawable/widget_ring"
+            android:importantForAccessibility="no" />
+        <ImageView
+            android:id="@+id/r_fill"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="7dp"
+            android:src="@drawable/widget_dot"
+            android:visibility="gone"
+            android:importantForAccessibility="no" />
+        <ImageView
+            android:id="@+id/r_mark"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="9dp"
+            android:src="@drawable/widget_check"
+            android:visibility="gone"
+            android:importantForAccessibility="no" />
+        <TextView
+            android:id="@+id/r_count"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </FrameLayout>
+    <LinearLayout
+        android:id="@+id/r_body"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="4dp"
+        android:paddingEnd="6dp">
+        <TextView
+            android:id="@+id/r_title"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:textColor="@color/ritmo_widget_ink"
+            android:textSize="14sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+        <TextView
+            android:id="@+id/r_meta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textColor="@color/ritmo_widget_muted"
+            android:textSize="12sp"
+            android:maxLines="1" />
+    </LinearLayout>
+</LinearLayout>

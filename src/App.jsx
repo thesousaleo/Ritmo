@@ -28,7 +28,8 @@ import { MatrixView } from './components/MatrixView.jsx';
 import { FocusView } from './components/FocusView.jsx';
 import { SearchSheet } from './components/SearchSheet.jsx';
 import { useRitmoStore } from './store.js';
-import { ALL_DAYS, keyOf, todayDate, normalizeHabit, fmtLong } from './lib/habits.js';
+import { ALL_DAYS, keyOf, todayDate, normalizeHabit, fmtLong, colorOf } from './lib/habits.js';
+import { isHex } from './lib/settings.js';
 import { viewMeta } from './lib/tasks.js';
 import { isRunning } from './lib/focus.js';
 import { startAmbient, stopAmbient } from './lib/sound.js';
@@ -118,7 +119,45 @@ export default function App() {
       setModule('habits');
       setHabitDetail({ habitId: h.id, dayKey: keyOf(todayDate()) });
     },
+    // Widgets: tema e cor seguem o app; os toques chegam como endereços ritmo://
+    theme: resolvedTheme,
+    accent: store.settings.accent ? (isHex(store.settings.accent) ? store.settings.accent : colorOf(store.settings.accent).value) : '',
+    onLink: ({ kind, id, query }) => {
+      const d = storeLatest.current.data;
+      const today = keyOf(todayDate());
+      setSettingsTab(null);
+      if (kind === 'task' && d.tasks.some((t) => t.id === id)) {
+        setModule('tasks');
+        setTaskId(id);
+      } else if (kind === 'tasks') {
+        setModule('tasks');
+        if (id === 'today' || id === 'next7' || (id.startsWith('list:') && d.lists.some((l) => `list:${l.id}` === id))) setView(id);
+      } else if (kind === 'new-task') {
+        const v = query.list && d.lists.some((l) => l.id === query.list) ? `list:${query.list}` : 'today';
+        setModule('tasks');
+        setQuickAdd({ view: v });
+      } else if (kind === 'focus') setModule('focus');
+      else if (kind === 'habits') setModule('habits');
+      else if (kind === 'new-habit') {
+        setModule('habits');
+        setHabitSheet({ mode: 'create', habit: blankHabit() });
+      } else if (kind === 'habit') {
+        const h = d.habits.find((x) => x.id === id);
+        setModule('habits');
+        if (h) setHabitDetail({ habitId: h.id, dayKey: today });
+      } else if (kind === 'calendar') setModule('calendar');
+      else if (kind === 'new-event') {
+        setModule('calendar');
+        setCreate({ date: today });
+      } else if (kind === 'event') {
+        const e = d.events.find((x) => x.id === id);
+        if (e) setEventSheet(e);
+        else setModule('calendar');
+      }
+    },
   });
+  const storeLatest = useRef(store);
+  storeLatest.current = store;
 
   // Módulo desligado nos Ajustes: volta para o primeiro visível
   useEffect(() => {
