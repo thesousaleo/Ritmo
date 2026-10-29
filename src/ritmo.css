@@ -229,7 +229,7 @@ input, textarea, select { font-size: 16px; }
 /* ---------- hoje ---------- */
 .today, .today-side, .today-main { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
 .progress { display: flex; align-items: center; gap: 22px; }
-.ring { position: relative; width: 140px; height: 140px; flex: none; }
+.dayring { position: relative; width: 140px; height: 140px; flex: none; }
 .ring-svg { width: 100%; height: 100%; }
 .ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .ring-num { font-family: var(--font-display); font-size: 36px; font-weight: 750; letter-spacing: -0.03em; line-height: 1; display: flex; align-items: baseline; }
@@ -495,7 +495,7 @@ input, textarea, select { font-size: 16px; }
 .is-desktop .today-main { padding-top: 6px; gap: 28px; }
 .is-desktop .week { margin: 0; padding: 2px 0 4px; scroll-padding-inline: 0; }
 .is-desktop .progress { flex-direction: column; align-items: stretch; gap: 22px; background: var(--surface); border-radius: 24px; padding: 26px; }
-.is-desktop .ring { width: 210px; height: 210px; align-self: center; }
+.is-desktop .dayring { width: 210px; height: 210px; align-self: center; }
 .is-desktop .ring-num { font-size: 50px; }
 .is-desktop .ring-pct { font-size: 22px; }
 .is-desktop .ring-sub { font-size: 14px; }

@@ -194,55 +194,10 @@ try {
   // Hábitos e consistência
   step = 'Hábitos e consistência';
   await page.click('nav.tabbar button:has-text("Hábitos")');
-  await page.waitForSelector('.ring');
+  await page.waitForSelector('.dayring');
   await shot(page, '12-celular-habitos');
-  // Diagnóstico: o que desenha um retângulo em volta do anel?
-  {
-    const box = await page.locator('.hsum .ring').boundingBox();
-    const px = async () => {
-      const buf = await page.screenshot({ clip: { x: box.x - 2, y: box.y + box.height / 2, width: 1, height: 1 } });
-      return buf.toString('base64').slice(-40);
-    };
-    const base = await px();
-    const tries = {};
-    for (const [label, css] of [
-      ['svg', '.hsum .ring-svg{display:none!important}'],
-      ['center', '.hsum .ring-center{display:none!important}'],
-      ['ring', '.hsum .ring{visibility:hidden!important}'],
-      ['allanim', '*{animation:none!important;transition:none!important}'],
-    ]) {
-      const h = await page.addStyleTag({ content: css });
-      await page.waitForTimeout(150);
-      tries[label] = (await px()) === base ? 'igual' : 'mudou';
-      await h.evaluate((n) => n.remove());
-      await page.waitForTimeout(150);
-    }
-    const near = await page.evaluate((b) => {
-      const out = [];
-      for (const el of document.querySelectorAll('*')) {
-        const r = el.getBoundingClientRect();
-        if (Math.abs(r.width - b.width) < 12 && Math.abs(r.x - b.x) < 8 && Math.abs(r.height - b.height) < 12) out.push(`${el.tagName}.${String(el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className)} ${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)} tab=${el.tabIndex}`);
-      }
-      return out;
-    }, box);
-    const diff = await page.evaluate(() => {
-      const ring = document.querySelector('.hsum .ring');
-      const ref = document.createElement('div');
-      ring.parentNode.insertBefore(ref, ring);
-      const a = getComputedStyle(ring);
-      const b = getComputedStyle(ref);
-      const out = {};
-      for (let i = 0; i < a.length; i++) {
-        const k = a[i];
-        if (a.getPropertyValue(k) !== b.getPropertyValue(k) && !/^(width|height|inline-size|block-size|perspective-origin|transform-origin|position|flex|min-|max-)/.test(k)) out[k] = a.getPropertyValue(k).slice(0, 60);
-      }
-      const pb = getComputedStyle(ring, '::before').content;
-      const pa = getComputedStyle(ring, '::after').content;
-      ref.remove();
-      return { out, pb, pa, matchesFocus: ring.matches(':focus'), matchesFV: ring.matches(':focus-visible'), html: ring.outerHTML.slice(0, 160) };
-    });
-    checks.push({ name: 'diagnóstico do anel', ok: true, detail: JSON.stringify({ tries, near, box, diff }) });
-  }
+  // O anel não pode ganhar o contorno azul do utilitário "ring" do Tailwind
+  ok('anel do dia sem contorno extra', await page.evaluate(() => getComputedStyle(document.querySelector('.hsum .dayring')).boxShadow === 'none'));
   await page.click('button[aria-label="Mais opções de hábitos"]');
   await page.click('.menu-item:has-text("Dia difícil")');
   await page.waitForTimeout(300);
@@ -251,7 +206,7 @@ try {
   await page.click('button[aria-label="Mais opções de hábitos"]');
   await page.click('.menu-item:has-text("Desfazer dia difícil")');
   await page.waitForTimeout(300);
-  ok('foco não fica preso no anel do dia', await page.evaluate(() => !(document.activeElement && document.activeElement.closest && document.activeElement.closest('.ring'))));
+  ok('foco não fica preso no anel do dia', await page.evaluate(() => !(document.activeElement && document.activeElement.closest && document.activeElement.closest('.dayring'))));
   const routine = page.locator('.routine-btn').first();
   if (await routine.count()) {
     await routine.click();
@@ -408,7 +363,7 @@ try {
   await page.waitForSelector('.focus-ring');
   await shot(page, '30-desk-foco');
   await page.click('.rail button:has-text("Hábitos")');
-  await page.waitForSelector('.ring');
+  await page.waitForSelector('.dayring');
   await shot(page, '31-desk-habitos');
   await page.click('.rail button[title^="Consistência"]');
   await page.waitForSelector('.stats');

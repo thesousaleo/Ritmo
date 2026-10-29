@@ -303,7 +303,7 @@
 
 /* ---------- hábitos (layout limpo) ---------- */
 .today.is-clean, .is-clean .today-side, .is-clean .today-main { gap: 18px; }
-.ring, .ring * { -webkit-user-select: none; user-select: none; outline: none; }
+.dayring, .dayring * { -webkit-user-select: none; user-select: none; outline: none; }
 .ring-svg { pointer-events: none; }
 /* Dia escolhido: pílula clara e discreta em vez de um bloco sólido */
 .is-clean .day-pill { background: var(--surface); box-shadow: var(--pill-shadow), inset 0 0 0 1px var(--line); }
@@ -312,7 +312,7 @@
 .is-clean .day.is-selected .mini-track { stroke: var(--line); }
 .is-clean .day.is-selected .mini-fill { stroke: var(--accent); }
 .hsum { display: flex; align-items: center; gap: 16px; padding: 14px 18px 14px 14px; border-radius: 20px; background: var(--surface); }
-.hsum .ring { width: 84px; height: 84px; }
+.hsum .dayring { width: 84px; height: 84px; }
 .hsum .ring-num { font-size: 21px; }
 .hsum .ring-pct { font-size: 12px; }
 .hsum .ring-sub { display: none; }
@@ -335,5 +335,5 @@
 .hgroup-head .routine-btn { margin-left: auto; }
 .off-toggle { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 4px; font-size: 14px; font-weight: 600; color: var(--muted); align-self: flex-start; }
 .is-desktop .hsum { padding: 18px 22px 18px 18px; }
-.is-desktop .hsum .ring { width: 104px; height: 104px; }
+.is-desktop .hsum .dayring { width: 104px; height: 104px; }
 .is-desktop .hsum .ring-num { font-size: 26px; }

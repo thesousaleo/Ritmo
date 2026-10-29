@@ -73,7 +73,7 @@ function DayRing({ items, done, total, percent, paused }) {
   const seg = n ? 360 / n - gap : 0;
 
   return (
-    <div className="ring">
+    <div className="dayring">
       <span className="sr-only">{paused ? 'Dia em pausa' : `${done} de ${total} hábitos concluídos`}</span>
       <svg viewBox="0 0 120 120" className="ring-svg" aria-hidden="true" focusable="false">
         {n === 0 && <circle cx="60" cy="60" r={R} fill="none" stroke="var(--surface-2)" strokeWidth={SW} strokeDasharray={paused ? '3 9' : undefined} strokeLinecap="round" />}
