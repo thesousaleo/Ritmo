@@ -174,10 +174,10 @@ try {
   await page.click('button[aria-label="Kanban"]');
   await page.waitForSelector('.kanban');
   await shot(page, '23-desk-kanban');
-  await mouseDrag(page, page.locator('.kcard:has-text("Preparar apresentação")'), page.locator('section.kcol[aria-label="Revisão"] .kcol-body'));
+  await mouseDrag(page, page.locator('.kcard:has-text("Preparar apresentação")'), page.locator('section.kcol[aria-label="Em andamento"] .kcol-body'));
   const d2 = await store(page);
   const ap = (d2.tasks || []).find((t) => t.id === 'ex-apresentacao');
-  ok('arrastar no Kanban muda a coluna', ap && ap.sectionId === 's-revisao', JSON.stringify(ap && ap.sectionId));
+  ok('arrastar no Kanban muda a coluna', ap && ap.sectionId === 's-andamento', JSON.stringify(ap && ap.sectionId));
   await shot(page, '24-desk-kanban-depois');
   await page.click('button[aria-label="Lista"]');
 
@@ -208,6 +208,10 @@ try {
   // Criar evento clicando num horário vazio
   await page.click('button[role="radio"]:has-text("Dia")');
   await page.waitForSelector('.tg-col');
+  await page.evaluate(() => {
+    document.querySelector('.tg-scroll').scrollTop = 52 * 18;
+  });
+  await page.waitForTimeout(200);
   const col = page.locator('.tg-col').first();
   const box = await col.boundingBox();
   await page.mouse.click(box.x + box.width / 2, box.y + 52 * 20.5);

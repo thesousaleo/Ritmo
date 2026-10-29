@@ -170,7 +170,7 @@ export function FocusView({ store, todayKey, desktop, headerRight }) {
               <span className="fstat-label">Foco hoje</span>
             </div>
             <div className="fstat">
-              <span className="fstat-num">{fmtMinutes(stats.totalMinutes)}</span>
+              <span className="fstat-num">{stats.totalMinutes >= 600 ? `${Math.round(stats.totalMinutes / 60)}h` : fmtMinutes(stats.totalMinutes)}</span>
               <span className="fstat-label">Total</span>
             </div>
           </div>

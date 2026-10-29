@@ -13,7 +13,7 @@ export const MODULES = [
   { id: 'matrix', label: 'Matriz', icon: 'Grid2x2', key: '3' },
   { id: 'focus', label: 'Foco', icon: 'Timer', key: '4' },
   { id: 'habits', label: 'Hábitos', icon: 'Sprout', key: '5' },
-  { id: 'stats', label: 'Consistência', icon: 'Activity', key: '6' },
+  { id: 'stats', label: 'Consistência', short: 'Evolução', icon: 'Activity', key: '6' },
 ];
 
 export function BrandMark({ size = 26 }) {
@@ -45,7 +45,7 @@ export function Rail({ module, onModule, onSearch, onAccount, name, status, focu
               <Icon name={m.icon} size={21} strokeWidth={module === m.id ? 2.3 : 1.9} />
               {m.id === 'focus' && focusRunning && <span className="run-dot" aria-label="Foco em andamento" />}
             </span>
-            <span className="rail-label">{m.label}</span>
+            <span className="rail-label">{m.short || m.label}</span>
           </button>
         ))}
       </div>

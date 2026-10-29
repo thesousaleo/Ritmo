@@ -18,7 +18,7 @@ const loadMode = () => {
   }
 };
 
-function EventChip({ occ, onOpen, dense }) {
+function EventChip({ occ, onOpen, dense, day }) {
   const ev = occ.ev;
   return (
     <div
@@ -32,7 +32,7 @@ function EventChip({ occ, onOpen, dense }) {
       tabIndex={0}
       {...dragProps({ type: 'event', id: ev.id }, null, { disabled: !!ev.repeat })}
     >
-      {!ev.allDay && occ.date === occ.ev.date && <span className="mitem-time">{ev.start}</span>}
+      {!ev.allDay && (!day || occ.date === day) && <span className="mitem-time">{ev.start}</span>}
       <span className="mitem-title">{ev.title}</span>
     </div>
   );
@@ -89,7 +89,7 @@ function DayList({ dayKey, todayKey, items, data, store, onOpenTask, onOpenEvent
       {events.map((o) => (
         <button key={o.id} type="button" className="ev-row" style={{ '--c': colorOf(o.ev.color).value }} onClick={() => onOpenEvent(o)}>
           <span className="ev-row-bar" />
-          <span className="ev-row-time">{o.ev.allDay ? 'Dia todo' : o.date === o.ev.date ? `${o.ev.start}${o.ev.end ? `\n${o.ev.end}` : ''}` : 'Continua'}</span>
+          <span className="ev-row-time">{o.ev.allDay ? 'Dia todo' : o.date === dayKey ? `${o.ev.start}${o.ev.end && o.endDate === dayKey ? `\n${o.ev.end}` : ''}` : 'Continua'}</span>
           <span className="min-w-0 flex-1">
             <span className="ev-row-title">{o.ev.title}</span>
             {(o.ev.location || o.ev.repeat) && (
@@ -155,7 +155,7 @@ function MonthView({ cursor, selected, onSelect, todayKey, data, store, desktop,
                   {desktop ? (
                     <div className="mcell-items">
                       {all.slice(0, max).map((x) =>
-                        x.k === 'e' ? <EventChip key={x.o.id} occ={x.o} onOpen={onOpenEvent} /> : <TaskChip key={x.t.id} task={x.t} onOpen={onOpenTask} onToggle={store.tasks.toggle} />
+                        x.k === 'e' ? <EventChip key={x.o.id} occ={x.o} onOpen={onOpenEvent} day={d.key} /> : <TaskChip key={x.t.id} task={x.t} onOpen={onOpenTask} onToggle={store.tasks.toggle} />
                       )}
                       {all.length > max && <span className="mcell-more">+{all.length - max}</span>}
                     </div>
@@ -238,7 +238,7 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
             return (
               <div key={k} className="tg-lane" data-drop data-day={k} data-allday onDoubleClick={() => onCreate({ date: k })}>
                 {a.events.map((o) => (
-                  <EventChip key={o.id} occ={o} onOpen={onOpenEvent} dense />
+                  <EventChip key={o.id} occ={o} onOpen={onOpenEvent} dense day={k} />
                 ))}
                 {a.tasks.map((t) => (
                   <TaskChip key={t.id} task={t} onOpen={onOpenTask} onToggle={store.tasks.toggle} />

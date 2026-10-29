@@ -53,10 +53,14 @@
 
 /* larguras por módulo */
 .is-desktop .page.is-tasks { max-width: 860px; padding: 34px 40px 64px; }
+.is-desktop .page.is-tasks:has(.tasks.is-kanban) { max-width: none; }
 .is-desktop .page.is-calendar, .is-desktop .page.is-matrix { max-width: none; padding: 28px 32px 32px; height: 100%; display: flex; flex-direction: column; }
 .is-desktop .page.is-focus { max-width: 1120px; }
 .page.is-calendar, .page.is-matrix, .page.is-focus, .page.is-tasks { padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 96px); }
 .is-desktop .page.is-calendar, .is-desktop .page.is-matrix { padding-bottom: 24px; }
+
+/* aviso acima do botão flutuante (celular) */
+.toast-wrap:not(.is-desktop) { bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 86px); }
 
 /* botão flutuante (celular) */
 .fab.is-float { position: fixed; z-index: 35; right: max(18px, env(safe-area-inset-right, 0px)); bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 16px); width: 56px; height: 56px; border-radius: 19px; }
