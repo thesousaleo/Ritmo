@@ -5,13 +5,15 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { isWeekly, inBreak, keyOf, todayDate } from './habits.js';
 import { reminderAt } from './tasks.js';
-import { fmtTime } from './prefs.js';
 import { eventOccurrences } from './calendar.js';
+import { taskNotice, eventNotice, habitNotice } from './notifyText.js';
 
 export const isNative = Capacitor.isNativePlatform();
 export const remindersSupported = isNative;
 
 const CHANNEL = 'lembretes';
+// Ícone monocromático da barra de status (android-plugin/res/drawable/ic_stat_ritmo.xml)
+const SMALL_ICON = 'ic_stat_ritmo';
 const TIMER_ID = 9;
 const FOCUS_ID = 10;
 const MAX_ONE_SHOT = 150;
@@ -24,6 +26,37 @@ function hashId(s) {
 }
 const reminderId = (habitId, weekday) => 1000 + hashId(habitId) * 7 + weekday;
 const oneShotId = (key) => 1_000_000 + (hashId(key) % 900_000) * 2;
+// Adiamentos pelo botão da notificação: um por tarefa (adiar de novo substitui o anterior)
+const SNOOZE_BASE = 3_000_000;
+const SNOOZE_END = 4_000_000;
+const snoozeId = (taskId) => SNOOZE_BASE + hashId(String(taskId));
+const isSnooze = (id) => id >= SNOOZE_BASE && id < SNOOZE_END;
+
+/** Notificação pronta de uma tarefa (lembrete, insistente ou adiada). */
+export function taskNotification(task, data, at, kind = 'remind', id) {
+  const n = taskNotice(task, data, at, kind);
+  return {
+    id: id ?? snoozeId(task.id),
+    ...n,
+    smallIcon: SMALL_ICON,
+    channelId: CHANNEL,
+    schedule: { at, allowWhileIdle: true },
+    extra: { taskId: task.id },
+    actionTypeId: 'TASK',
+  };
+}
+
+/** Adia o lembrete da tarefa por alguns minutos (botões da notificação). */
+export async function snoozeTask(task, data, minutes) {
+  if (!isNative) return;
+  try {
+    await ensureChannel();
+    const at = new Date(Date.now() + minutes * 60000);
+    await LocalNotifications.schedule({ notifications: [taskNotification(task, data, at, 'snooze', snoozeId(task.id))] });
+  } catch (e) {
+    /* opcional */
+  }
+}
 
 /** Lembretes únicos de tarefas e eventos para os próximos 21 dias. */
 export function upcomingReminders(data, now = new Date()) {
@@ -33,12 +66,12 @@ export function upcomingReminders(data, now = new Date()) {
     if (t.done || t.reminder < 0 || !t.date) continue;
     const at = reminderAt(t.date, t.time, t.reminder);
     if (at && at > now && at < horizon) {
-      out.push({ id: oneShotId(`t|${t.id}|${t.date}`), at, title: t.title, body: t.time ? `Às ${fmtTime(t.time)}` : 'Para hoje', extra: { taskId: t.id }, action: 'TASK' });
+      out.push({ id: oneShotId(`t|${t.id}|${t.date}`), at, ...taskNotice(t, data, at), extra: { taskId: t.id }, action: 'TASK' });
       // Lembrete insistente: repete a cada 30 minutos (até 4 vezes) enquanto a tarefa não for concluída
       if (t.nag) {
         for (let i = 1; i <= 4; i++) {
           const again = new Date(at.getTime() + i * 30 * 60000);
-          if (again < horizon) out.push({ id: oneShotId(`t|${t.id}|${t.date}|n${i}`), at: again, title: t.title, body: 'Ainda pendente', extra: { taskId: t.id }, action: 'TASK' });
+          if (again < horizon) out.push({ id: oneShotId(`t|${t.id}|${t.date}|n${i}`), at: again, ...taskNotice(t, data, again, 'nag'), extra: { taskId: t.id }, action: 'TASK' });
         }
       }
     }
@@ -49,7 +82,7 @@ export function upcomingReminders(data, now = new Date()) {
     const ev = o.ev;
     const at = reminderAt(o.date, ev.allDay ? '' : ev.start, ev.reminder);
     if (at && at > now && at < horizon)
-      out.push({ id: oneShotId(`e|${o.id}`), at, title: ev.title, body: ev.allDay ? 'Hoje, dia inteiro' : `Às ${fmtTime(ev.start)}${ev.location ? `, ${ev.location}` : ''}`, extra: { eventId: ev.id, date: o.date } });
+      out.push({ id: oneShotId(`e|${o.id}`), at, ...eventNotice(ev, o.date, at), extra: { eventId: ev.id, date: o.date } });
   }
   return out.sort((a, b) => a.at - b.at).slice(0, MAX_ONE_SHOT);
 }
@@ -88,7 +121,10 @@ export async function syncReminders(data, { ask = false } = {}) {
   const perm = await notificationPermission(ask && (wanted.length > 0 || oneShots.length > 0));
   try {
     const pending = await LocalNotifications.getPending();
-    const ours = pending.notifications.filter((n) => n.id >= 1000).map((n) => ({ id: n.id }));
+    const open = new Set((data.tasks || []).filter((t) => !t.done).map((t) => t.id));
+    // Adiamentos continuam valendo enquanto a tarefa estiver aberta; os de tarefas concluídas ou apagadas saem
+    const keep = (n) => isSnooze(n.id) && n.extra && open.has(n.extra.taskId);
+    const ours = pending.notifications.filter((n) => n.id >= 1000 && !keep(n)).map((n) => ({ id: n.id }));
     if (ours.length) await LocalNotifications.cancel({ notifications: ours });
   } catch (e) {
     /* nada agendado */
@@ -100,6 +136,10 @@ export async function syncReminders(data, { ask = false } = {}) {
     id: n.id,
     title: n.title,
     body: n.body,
+    largeBody: n.largeBody,
+    summaryText: n.summaryText,
+    iconColor: n.iconColor,
+    smallIcon: SMALL_ICON,
     channelId: CHANNEL,
     schedule: { at: n.at, allowWhileIdle: true },
     extra: n.extra,
@@ -114,9 +154,10 @@ export async function syncReminders(data, { ask = false } = {}) {
     for (const d of days) {
       notifications.push({
         id: reminderId(h.id, d),
-        title: h.kind === 'avoid' ? `Lembrete: ${h.name}` : h.name,
-        body: h.kind === 'avoid' ? 'Segure firme hoje.' : h.unit ? `Hora de ${h.unit.toLowerCase()}.` : 'Hora do seu hábito.',
+        ...habitNotice(h),
+        smallIcon: SMALL_ICON,
         channelId: CHANNEL,
+        ...(h.kind === 'avoid' ? {} : { actionTypeId: 'HABIT' }),
         schedule: { on: { weekday: d + 1, hour, minute }, allowWhileIdle: true },
         extra: { habitId: h.id },
       });
@@ -137,7 +178,7 @@ export async function scheduleTimerDone(habitName, endAt) {
     if ((await notificationPermission(true)) !== 'granted') return;
     await ensureChannel();
     await LocalNotifications.schedule({
-      notifications: [{ id: TIMER_ID, title: 'Tempo concluído', body: `${habitName} foi marcado como feito.`, channelId: CHANNEL, schedule: { at: new Date(endAt), allowWhileIdle: true } }],
+      notifications: [{ id: TIMER_ID, title: 'Tempo concluído', body: `${habitName} foi marcado como feito.`, smallIcon: SMALL_ICON, channelId: CHANNEL, schedule: { at: new Date(endAt), allowWhileIdle: true } }],
     });
   } catch (e) {
     /* opcional */
@@ -161,7 +202,7 @@ export async function showFocusOngoing(label, endAt) {
     await ensureChannel();
     const until = endAt ? new Date(endAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
     await LocalNotifications.schedule({
-      notifications: [{ id: ONGOING_ID, title: label, body: until ? `Até ${until}` : 'Cronômetro rodando', channelId: CHANNEL, ongoing: true, autoCancel: false, silent: true, schedule: { at: new Date(Date.now() + 800) } }],
+      notifications: [{ id: ONGOING_ID, title: label, body: until ? `Até ${until}` : 'Cronômetro rodando', smallIcon: SMALL_ICON, channelId: CHANNEL, ongoing: true, autoCancel: false, silent: true, schedule: { at: new Date(Date.now() + 800) } }],
     });
   } catch (e) {
     /* opcional */
@@ -182,7 +223,7 @@ export async function scheduleFocusEnd(title, body, endAt) {
   try {
     if ((await notificationPermission(true)) !== 'granted') return;
     await ensureChannel();
-    await LocalNotifications.schedule({ notifications: [{ id: FOCUS_ID, title, body, channelId: CHANNEL, schedule: { at: new Date(endAt), allowWhileIdle: true } }] });
+    await LocalNotifications.schedule({ notifications: [{ id: FOCUS_ID, title, body, smallIcon: SMALL_ICON, channelId: CHANNEL, schedule: { at: new Date(endAt), allowWhileIdle: true } }] });
   } catch (e) {
     /* opcional */
   }

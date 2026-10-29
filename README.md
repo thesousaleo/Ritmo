@@ -43,7 +43,7 @@ Rastreador de hábitos diários. A mesma base de código vira três coisas:
 - Evolução: jardim dos hábitos, melhor horário, radar de adiamentos, estimado × real, correlações e retrospectiva em imagem.
 - Foco: sons ambientes (gerados no próprio app), tela cheia e notificação fixa no Android.
 - Ajustes: tema (claro, escuro, preto, pelo horário), cor de destaque, densidade, tamanho do texto, módulos e ordem, início da semana, 12/24h, expediente, lugares, backups diários e diagnóstico de lembretes.
-- Android: widget, ícones alternativos, bloqueio com digital, lembrete ao chegar num lugar e botões Concluir/Adiar nas notificações.
+- Android: widget, ícones alternativos, bloqueio com digital, lembrete ao chegar num lugar, barra de navegação na cor do tema e notificações com ícone do Ritmo, cor da lista, detalhes ao expandir (subtarefas, descrição) e botões Concluir, Adiar 15 min, Adiar 1h e Feito (hábitos).
 
 **Geral**
 - Busca em tarefas, eventos e hábitos (tecla /).

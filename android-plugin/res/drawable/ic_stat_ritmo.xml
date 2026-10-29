@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícone das notificações (barra de status): a onda do logo do Ritmo, branca sobre transparente. O Android pinta com a cor da notificação. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="64" android:viewportHeight="64">
+    <group android:translateX="-25" android:translateY="-23">
+        <path android:pathData="M34,62 C42,62 44,44 52,44 C60,44 60,66 68,66 C74,66 75,50 80,50"
+            android:strokeColor="#FFFFFFFF" android:strokeWidth="8" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" />
+    </group>
+</vector>

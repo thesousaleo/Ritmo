@@ -106,3 +106,34 @@ export const openNotificationSettings = () => call('openNotificationSettings', {
 /* ---------- widget ---------- */
 /** Envia para o widget da tela inicial o resumo de hoje (tarefas e hábitos). */
 export const updateWidget = (payload) => call('updateWidget', { json: JSON.stringify(payload) }, null);
+
+/* ---------- barra de navegação (gestos/botões) ---------- */
+// Fundo da página e fundo dos painéis por tema; com um painel aberto, a barra continua o painel
+const NAV_COLORS = { light: ['#ECEFE9', '#FAFBF8'], dark: ['#0F1412', '#171E1B'], black: ['#000000', '#0D0F0E'] };
+let navTheme = 'light';
+let openSheets = 0;
+let lastNav = '';
+function paintNav() {
+  if (!Plugin) return;
+  const [page, sheet] = NAV_COLORS[navTheme] || NAV_COLORS.light;
+  const color = openSheets > 0 ? sheet : page;
+  const dark = navTheme !== 'light';
+  const sig = `${color}|${dark}`;
+  if (sig === lastNav) return;
+  lastNav = sig;
+  call('setNavigationBar', { color, dark });
+}
+/** Tema efetivo do app ('light' | 'dark' | 'black'). */
+export function setNavTheme(theme) {
+  navTheme = NAV_COLORS[theme] ? theme : theme === 'light' ? 'light' : 'dark';
+  paintNav();
+}
+/** Painel (bottom sheet) aberto no celular. Devolve a função que avisa o fechamento. */
+export function navSheetOpened() {
+  openSheets += 1;
+  paintNav();
+  return () => {
+    openSheets = Math.max(0, openSheets - 1);
+    paintNav();
+  };
+}

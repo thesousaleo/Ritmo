@@ -10,17 +10,21 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.speech.RecognizerIntent;
+import android.view.Window;
 
 import androidx.activity.result.ActivityResult;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.fragment.app.FragmentActivity;
 
 import com.getcapacitor.JSArray;
@@ -289,6 +293,29 @@ public class RitmoNativePlugin extends Plugin {
         } catch (Exception ignored) {
         }
         call.resolve();
+    }
+
+    /* ---------------- barra de navegação ---------------- */
+    /** Pinta a barra de navegação (gestos ou botões) com a cor do tema; ícones claros no tema escuro. */
+    @PluginMethod
+    public void setNavigationBar(PluginCall call) {
+        final String color = call.getString("color", "#ECEFE9");
+        final boolean dark = Boolean.TRUE.equals(call.getBoolean("dark", false));
+        getActivity().runOnUiThread(() -> {
+            try {
+                paintNavigationBar(getActivity().getWindow(), Color.parseColor(color), dark);
+            } catch (Exception ignored) {
+            }
+            call.resolve();
+        });
+    }
+
+    static void paintNavigationBar(Window window, int color, boolean dark) {
+        window.setNavigationBarColor(color);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) window.setNavigationBarDividerColor(color);
+        // Sem o véu translúcido que o Android 10+ põe sobre a barra de gestos
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) window.setNavigationBarContrastEnforced(false);
+        new WindowInsetsControllerCompat(window, window.getDecorView()).setAppearanceLightNavigationBars(!dark);
     }
 
     /* ---------------- widget ---------------- */

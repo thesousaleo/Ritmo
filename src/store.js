@@ -212,11 +212,12 @@ export function useRitmoStore() {
 
   /* ---------- lembretes (hábitos, tarefas e eventos) ---------- */
   const reminderSig = JSON.stringify([
-    data.habits.map((h) => [h.id, h.name, h.reminder, h.days, h.freq, h.archived, h.kind, h.unit]),
+    data.habits.map((h) => [h.id, h.name, h.reminder, h.days, h.freq, h.archived, h.kind, h.unit, h.target, h.color, h.duration]),
     data.breaks,
-    (data.tasks || []).filter((t) => t.reminder >= 0 && !t.done && t.date).map((t) => [t.id, t.title, t.date, t.time, t.reminder, t.nag]),
+    (data.tasks || []).filter((t) => t.reminder >= 0 && !t.done && t.date).map((t) => [t.id, t.title, t.date, t.time, t.reminder, t.nag, t.listId, t.priority, t.amount, t.notes, (t.checklist || []).map((c) => (c.done ? 1 : 0)).join('')]),
+    (data.lists || []).map((l) => [l.id, l.name, l.color]),
     data.settings && [data.settings.clock24, data.settings.uf, data.settings.customHolidays],
-    (data.events || []).filter((e) => e.reminder >= 0).map((e) => [e.id, e.title, e.date, e.start, e.allDay, e.repeat, e.reminder, e.location]),
+    (data.events || []).filter((e) => e.reminder >= 0).map((e) => [e.id, e.title, e.date, e.start, e.allDay, e.repeat, e.reminder, e.location, e.end, e.color, e.notes]),
     keyOf(today),
   ]);
   useEffect(() => {

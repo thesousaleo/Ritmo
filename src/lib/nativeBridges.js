@@ -1,6 +1,6 @@
 /*
  * Efeitos que conversam com o Android: bloqueio por digital, widget da tela inicial,
- * lembretes por lugar e ações das notificações (Concluir / Adiar 1h).
+ * lembretes por lugar e ações das notificações (Concluir / Adiar, Feito nos hábitos).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { App as NativeApp } from '@capacitor/app';
@@ -8,6 +8,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { isNativeAndroid, authenticate, updateWidget, setGeofences } from './ritmoNative.js';
 import { keyOf, fromKey, addDays, activeHabits, isListed, countOf } from './habits.js';
 import { sortTasks } from './tasks.js';
+import { snoozeTask } from './native.js';
 
 export function useNativeBridges(store, todayKey) {
   const { data, settings, device } = store;
@@ -77,7 +78,7 @@ export function useNativeBridges(store, todayKey) {
     setGeofences(fences);
   }, [fenceSig]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Ações das notificações: Concluir e Adiar 1h
+  // Ações das notificações: Concluir / Adiar 15 min / Adiar 1h nas tarefas e Feito nos hábitos
   const storeRef = useRef(store);
   storeRef.current = store;
   useEffect(() => {
@@ -88,24 +89,28 @@ export function useNativeBridges(store, todayKey) {
           id: 'TASK',
           actions: [
             { id: 'done', title: 'Concluir' },
+            { id: 'snooze15', title: 'Adiar 15 min' },
             { id: 'snooze', title: 'Adiar 1h' },
           ],
         },
+        { id: 'HABIT', actions: [{ id: 'habitDone', title: 'Feito' }] },
       ],
     }).catch(() => {});
     const h = LocalNotifications.addListener('localNotificationActionPerformed', (ev) => {
       const extra = (ev.notification && ev.notification.extra) || {};
-      if (!extra.taskId) return;
       const s = storeRef.current;
+      if (extra.habitId && ev.actionId === 'habitDone') {
+        const hb = s.data.habits.find((x) => x.id === extra.habitId);
+        const day = keyOf(new Date());
+        if (hb && countOf(s.data.log, day, hb.id) < hb.target) s.habits.setCount(hb, day, hb.target);
+        return;
+      }
+      if (!extra.taskId) return;
       const t = s.data.tasks.find((x) => x.id === extra.taskId);
       if (!t) return;
       if (ev.actionId === 'done' && !t.done) s.tasks.toggle(t.id);
-      if (ev.actionId === 'snooze') {
-        const at = new Date(Date.now() + 3600000);
-        LocalNotifications.schedule({
-          notifications: [{ id: Math.floor(Math.random() * 1e6) + 3e6, title: t.title, body: 'Adiado por 1 hora', schedule: { at, allowWhileIdle: true }, channelId: 'lembretes', actionTypeId: 'TASK', extra: { taskId: t.id } }],
-        }).catch(() => {});
-      }
+      if (ev.actionId === 'snooze15') snoozeTask(t, s.data, 15);
+      if (ev.actionId === 'snooze') snoozeTask(t, s.data, 60);
     });
     return () => Promise.resolve(h).then((x) => x && x.remove && x.remove());
   }, []);

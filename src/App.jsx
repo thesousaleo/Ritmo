@@ -17,6 +17,7 @@ import { RitualSheet, WhatNowSheet, TemplateSheet, FilterSheet } from './compone
 import { LockScreen } from './components/LockScreen.jsx';
 import { useAppearance } from './lib/appearance.js';
 import { useNativeBridges } from './lib/nativeBridges.js';
+import { setNavTheme } from './lib/ritmoNative.js';
 import { TasksView } from './components/tasks/TasksView.jsx';
 import { TaskPanel, TaskSheet } from './components/tasks/TaskDetail.jsx';
 import { QuickAdd } from './components/tasks/QuickAdd.jsx';
@@ -252,6 +253,8 @@ export default function App() {
     const dark = resolvedTheme !== 'light';
     StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light }).catch(() => {});
     StatusBar.setBackgroundColor({ color: resolvedTheme === 'black' ? '#000000' : dark ? '#0F1412' : '#ECEFE9' }).catch(() => {});
+    // Barra de navegação (gestos) na mesma cor, em vez do branco padrão do Android
+    setNavTheme(resolvedTheme);
   }, [resolvedTheme]);
 
   const accountButton = !desktop && <SettingsButton status={store.syncStatus} onClick={() => openSettings()} />;

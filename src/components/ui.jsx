@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, useDragControls, useSpring, useTransform } from 'framer-motion';
 import * as Icons from 'lucide-react';
+import { navSheetOpened } from '../lib/ritmoNative.js';
 
 /* ------------------------------------------------------------------ */
 /* Motion tokens                                                       */
@@ -132,6 +133,9 @@ export function Sheet({ desktop, title, onClose, as = 'div', onSubmit, footer, c
   const Panel = as === 'form' ? motion.form : motion.div;
 
   useEscape(onClose);
+
+  // No celular, a barra de navegação do Android acompanha a cor do painel enquanto ele está aberto
+  useEffect(() => (desktop ? undefined : navSheetOpened()), [desktop]);
 
   // Foco vai para o painel ao abrir e volta para quem abriu ao fechar
   useEffect(() => {

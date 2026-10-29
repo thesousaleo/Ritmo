@@ -8,6 +8,10 @@
   "plugins": {
     "StatusBar": {
       "overlaysWebView": false
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_ritmo",
+      "iconColor": "#3450E6"
     }
   }
 }
