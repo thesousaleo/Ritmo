@@ -263,3 +263,8 @@
 .fullfocus-bar { width: min(420px, 70vw); height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
 .fullfocus-bar span { display: block; height: 100%; background: var(--accent); transform-origin: left; transition: transform 1s linear; }
 .fullfocus-label { font-size: 17px; font-weight: 550; color: var(--ink); max-width: 80vw; text-align: center; text-wrap: balance; min-height: 1.4em; }
+
+/* Segmentado: pílula única deslizante */
+.seg { position: relative; isolation: isolate; }
+.seg-pill.is-slider { position: absolute; top: 3px; bottom: 3px; left: 0; right: auto; inset-inline-end: auto; z-index: 0; pointer-events: none; }
+.seg button { z-index: 1; }

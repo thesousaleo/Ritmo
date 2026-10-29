@@ -73,8 +73,35 @@ export function RollingNumber({ value }) {
 }
 
 export function Segmented({ id, options, value, onChange, label }) {
+  // Pílula única que desliza até o botão ativo (medido). Sem layoutId: dentro de painéis que saem com
+  // animação, elementos com layoutId podem segurar a saída e deixar uma camada invisível sobre o app.
+  const boxRef = useRef(null);
+  const [pill, setPill] = useState(null);
+  const idx = options.findIndex((o) => o.id === value);
+  useLayoutEffectSafe(() => {
+    const box = boxRef.current;
+    if (!box) return undefined;
+    const measure = () => {
+      const btn = box.querySelectorAll('button')[idx];
+      setPill(btn ? { x: btn.offsetLeft, w: btn.offsetWidth } : null);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [idx, options.length]);
   return (
-    <div className="seg" role="radiogroup" aria-label={label} style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
+    <div ref={boxRef} className="seg" role="radiogroup" aria-label={label} style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
+      {pill && (
+        <motion.span
+          className="seg-pill is-slider"
+          aria-hidden="true"
+          initial={false}
+          animate={{ x: pill.x, width: pill.w }}
+          transition={SPRING.indicator}
+        />
+      )}
       {options.map((o) => (
         <button
           key={o.id}
@@ -85,8 +112,8 @@ export function Segmented({ id, options, value, onChange, label }) {
           title={o.ariaLabel}
           className={value === o.id ? 'is-on' : ''}
           onClick={() => onChange(o.id)}
+          data-seg={id}
         >
-          {value === o.id && <motion.span layoutId={`seg-${id}`} className="seg-pill" transition={SPRING.indicator} />}
           <span className="relative">{o.label}</span>
         </button>
       ))}

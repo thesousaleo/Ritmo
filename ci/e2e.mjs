@@ -233,7 +233,7 @@ try {
   await ctx.close();
 } catch (e) {
   if (curPage) await curPage.screenshot({ path: `${OUT}/99-falha-celular.png` }).catch(() => {});
-  problems.push(`[celular] fluxo interrompido em "${step}": ${e.message.split('\n').slice(0, 3).join(' | ')}`);
+  problems.push(`[celular] fluxo interrompido em "${step}": ${e.message.split('\n').slice(0, 9).join(' | ')}`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -409,7 +409,7 @@ try {
   await ctx.close();
 } catch (e) {
   if (curPage) await curPage.screenshot({ path: `${OUT}/99-falha-computador.png` }).catch(() => {});
-  problems.push(`[computador] fluxo interrompido em "${step}": ${e.message.split('\n').slice(0, 3).join(' | ')}`);
+  problems.push(`[computador] fluxo interrompido em "${step}": ${e.message.split('\n').slice(0, 9).join(' | ')}`);
 }
 
 await browser.close();
