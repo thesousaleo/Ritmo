@@ -300,6 +300,11 @@ try {
   await page.click('button[role="radio"]:has-text("Semana")');
   await page.waitForSelector('.tg-col');
   await shot(page, '26-desk-agenda-semana');
+  // Rola a grade para as 8h: a posição inicial depende da hora em que o teste roda
+  await page.evaluate(() => {
+    document.querySelector('.tg-scroll').scrollTop = 52 * 8;
+  });
+  await page.waitForTimeout(250);
   const blk = page.locator('.blk.is-task:has-text("Revisar proposta")');
   if (await blk.count()) {
     const a = await center(blk);
