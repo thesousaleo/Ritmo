@@ -358,11 +358,10 @@ export default function App() {
         onDay={store.habits.setDay}
         timer={timer}
         title="Hábitos"
+        desktop={desktop}
+        onStats={() => goModule('stats')}
         headerRight={
           <>
-            <button type="button" className="icon-btn ghost" onClick={() => goModule('stats')} aria-label="Consistência">
-              <Icon name="Activity" size={19} />
-            </button>
             {desktop && (
               <button type="button" className="btn-secondary sm" onClick={() => setHabitSheet({ mode: 'create', habit: blankHabit() })}>
                 <Icon name="Plus" size={15} /> Novo hábito

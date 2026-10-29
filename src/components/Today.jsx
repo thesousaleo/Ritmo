@@ -8,7 +8,7 @@ import {
 } from '../lib/habits.js';
 import { onThisDay } from '../lib/insights.js';
 import { fmtTime, weekOrder } from '../lib/prefs.js';
-import { Portal, useEscape } from './ui.jsx';
+import { Portal, useEscape, Popover, MenuList, usePopover } from './ui.jsx';
 
 /* ------------------------------------------------------------------ */
 /* Cabeçalho de página + botão de conta (celular)                      */
@@ -456,44 +456,67 @@ function PartnerSection({ data, today }) {
 /* ------------------------------------------------------------------ */
 /* Diário de uma linha + dia difícil                                   */
 /* ------------------------------------------------------------------ */
-function DayNote({ data, dayKey, isToday, onDay }) {
-  const info = (data.days || {})[dayKey] || {};
+function DayCheckin({ data, dayKey, isToday, info, onMood, onDay }) {
+  const mood = (data.moods && data.moods[dayKey]) || 0;
+  const [editing, setEditing] = useState(false);
   const [text, setText] = useState(info.journal || '');
-  useEffect(() => setText(info.journal || ''), [dayKey, info.journal]);
-  // Dia difícil: no máximo um a cada 7 dias, para continuar significando algo
-  const recentHard = Object.keys(data.days || {}).some((k) => k !== dayKey && data.days[k].hard && Math.abs(fromKey(k) - fromKey(dayKey)) < 7 * 86400000);
+  useEffect(() => {
+    setText(info.journal || '');
+    setEditing(false);
+  }, [dayKey, info.journal]);
   const save = () => {
-    if (text.trim() !== (info.journal || '')) onDay(dayKey, { journal: text.trim() });
+    setEditing(false);
+    if (onDay && text.trim() !== (info.journal || '')) onDay(dayKey, { journal: text.trim() });
   };
   return (
-    <div className="daynote">
-      <input
-        className="daynote-input"
-        value={text}
-        maxLength={280}
-        placeholder={isToday ? 'Uma linha sobre hoje' : 'Uma linha sobre este dia'}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        enterKeyHint="done"
-        aria-label="Diário do dia"
-      />
-      <button
-        type="button"
-        className={`hard-chip${info.hard ? ' is-on' : ''}`}
-        onClick={() => onDay(dayKey, { hard: !info.hard })}
-        disabled={!info.hard && recentHard}
-        title={!info.hard && recentHard ? 'Você já usou um dia difícil nesta semana' : 'Dia difícil: o dia não cobra nada e as sequências ficam protegidas'}
-        aria-pressed={!!info.hard}
-      >
-        <Icon name="CloudDrizzle" size={14} /> Dia difícil
-      </button>
-    </div>
+    <section className="checkin" aria-label="Como foi o dia">
+      <div className="checkin-row">
+        <span className="checkin-label">{isToday ? 'Como está o dia?' : 'Como foi o dia?'}</span>
+        <div className="mood-row" role="radiogroup" aria-label="Humor do dia">
+          {MOODS.map((m) => (
+            <motion.button
+              key={m.value}
+              type="button"
+              role="radio"
+              aria-checked={mood === m.value}
+              aria-label={m.label}
+              className={`mood-btn${mood === m.value ? ' is-on' : ''}`}
+              onClick={() => onMood(dayKey, mood === m.value ? 0 : m.value)}
+              whileTap={{ scale: 0.88 }}
+              transition={SPRING.press}
+            >
+              <Icon name={m.icon} size={20} strokeWidth={mood === m.value ? 2.3 : 1.8} />
+            </motion.button>
+          ))}
+        </div>
+      </div>
+      {onDay &&
+        (editing ? (
+          <input
+            className="checkin-input"
+            value={text}
+            autoFocus
+            maxLength={280}
+            placeholder={isToday ? 'Uma linha sobre hoje' : 'Uma linha sobre este dia'}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={save}
+            onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+            enterKeyHint="done"
+            aria-label="Diário do dia"
+          />
+        ) : (
+          <button type="button" className={`checkin-note${info.journal ? ' has-text' : ''}`} onClick={() => setEditing(true)}>
+            {info.journal ? info.journal : (
+              <>
+                <Icon name="PenLine" size={14} /> {isToday ? 'Uma linha sobre hoje' : 'Uma linha sobre este dia'}
+              </>
+            )}
+          </button>
+        ))}
+    </section>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Humor do dia                                                        */
 /* ------------------------------------------------------------------ */
 function MoodPicker({ value, onChange, isToday }) {
   return (
@@ -523,8 +546,10 @@ function MoodPicker({ value, onChange, isToday }) {
 /* ------------------------------------------------------------------ */
 /* Tela Hoje                                                           */
 /* ------------------------------------------------------------------ */
-export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onOpen, onCreate, onManage, onMood, onEndBreak, timer, headerRight, title, onMinimal, onDay }) {
+export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onOpen, onCreate, onManage, onMood, onEndBreak, timer, headerRight, title, onMinimal, onDay, onStats, desktop }) {
   const [runner, setRunner] = useState(null); // id do período
+  const [showOff, setShowOff] = useState(false);
+  const menu = usePopover();
   const selectedDate = fromKey(selectedKey);
   const isToday = selectedKey === keyOf(today);
   const active = activeHabits(data);
@@ -533,6 +558,10 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onO
   const summary = daySummary(data, selectedDate);
   const percent = Math.round(summary.partial * 100);
   const pause = breakOn(data, selectedKey);
+  const hard = isHardDay(data, selectedKey);
+  const info = (data.days || {})[selectedKey] || {};
+  // Dia difícil: no máximo um a cada 7 dias, para continuar significando algo
+  const recentHard = Object.keys(data.days || {}).some((k) => k !== selectedKey && data.days[k].hard && Math.abs(fromKey(k) - fromKey(selectedKey)) < 7 * 86400000);
 
   const ringItems = PERIODS.flatMap((p) => listed.filter((h) => h.period === p.id))
     .filter((h) => !pause && (isScheduled(h, selectedDate, data) || (isWeekly(h) && isDone(h, data.log, selectedKey))))
@@ -549,28 +578,30 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onO
   const memory = isToday ? onThisDay(data, selectedKey) : null;
   const headline = pause
     ? 'Dia em pausa'
-    : summary.hard && summary.total === summary.done
-      ? 'Dia difícil: pegue leve'
-      : summary.total === 0
-      ? 'Nada obrigatório hoje'
+    : summary.total === 0
+      ? 'Nada obrigatório'
       : remaining === 0
         ? 'Dia completo'
         : isToday
           ? `Faltam ${remaining}`
           : `${remaining} ficaram pendentes`;
+  const sub = pause
+    ? `Até ${shortDate(pause.end)}. Sequências protegidas.`
+    : summary.total === 0
+      ? hard
+        ? 'Dia difícil: pegue leve.'
+        : 'Os hábitos de hoje aparecem aqui.'
+      : `${summary.done} de ${summary.total} feitos${hard ? ' · dia difícil' : ''}`;
 
   return (
-    <div className="today">
+    <div className="today is-clean">
       <div className="today-side">
-        <PageHeader
-          title={title || `${greetingFor(new Date())}${data.name ? `, ${data.name}` : ''}`}
-          subtitle={isToday ? `Hoje, ${fmtLong.format(selectedDate)}` : fmtLong.format(selectedDate)}
-        >
+        <PageHeader title={title || 'Hábitos'} subtitle={isToday ? `Hoje, ${fmtLong.format(selectedDate)}` : fmtLong.format(selectedDate)}>
           <AnimatePresence initial={false}>
             {!isToday && (
               <motion.button
                 type="button"
-                className="chip-btn"
+                className="chip-btn sm"
                 onClick={() => onSelectDay(keyOf(today))}
                 initial={{ opacity: 0, scale: 0.94 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -578,62 +609,33 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onO
                 transition={{ duration: 0.18, ease: EASE_OUT }}
                 style={{ transformOrigin: 'right center' }}
               >
-                Ir para hoje
+                Hoje
               </motion.button>
             )}
           </AnimatePresence>
+          <button type="button" className="icon-btn ghost" onClick={(e) => menu.open(e)} aria-label="Mais opções de hábitos">
+            <Icon name="Ellipsis" size={20} />
+          </button>
           {headerRight}
         </PageHeader>
 
         <WeekStrip data={data} selectedKey={selectedKey} onSelect={onSelectDay} today={today} />
 
-        {pause && (
-          <div className="pause-banner">
-            <Icon name="Palmtree" size={20} />
-            <p className="flex-1 min-w-0">
-              Pausa até <strong>{shortDate(pause.end)}</strong>. Suas sequências estão protegidas.
-            </p>
-            {isToday && (
-              <button type="button" className="btn-secondary sm" onClick={() => onEndBreak(pause)}>
-                Encerrar
+        <section className={`hsum${pause ? ' is-paused' : ''}`} aria-label="Progresso do dia">
+          <DayRing items={ringItems} done={summary.done} total={summary.total} percent={percent} paused={!!pause} />
+          <div className="hsum-text">
+            <p className="hsum-head">{headline}</p>
+            <p className="hsum-sub">{sub}</p>
+            {pause && isToday && (
+              <button type="button" className="btn-link hsum-link" onClick={() => onEndBreak(pause)}>
+                Encerrar pausa
               </button>
             )}
           </div>
-        )}
-
-        <section className="progress" aria-label="Progresso do dia">
-          <DayRing items={ringItems} done={summary.done} total={summary.total} percent={percent} paused={!!pause} />
-          <div className="progress-side">
-            <p className="progress-head">{headline}</p>
-            <ul className="period-list">
-              {groups.map((g) => {
-                const req = g.habits.filter((h) => !isWeekly(h));
-                if (!req.length) return null;
-                const d = req.filter((h) => isDone(h, data.log, selectedKey)).length;
-                return (
-                  <li key={g.id} className="period-item">
-                    <span className="period-name">{PERIOD_SHORT[g.id]}</span>
-                    <span className="period-bar" aria-hidden="true">
-                      <motion.span className="period-bar-fill" initial={false} animate={{ scaleX: d / req.length }} transition={SPRING.progress} />
-                    </span>
-                    <span className="period-count">
-                      {d}/{req.length}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
         </section>
 
-        <MoodPicker value={(data.moods && data.moods[selectedKey]) || 0} onChange={(m) => onMood(selectedKey, m)} isToday={isToday} />
-        {onDay && <DayNote data={data} dayKey={selectedKey} isToday={isToday} onDay={onDay} />}
-        {isHardDay(data, selectedKey) && (
-          <p className="soft-note">
-            <Icon name="CloudDrizzle" size={16} />
-            Dia difícil: o que ficar pendente hoje não conta e suas sequências seguem protegidas.
-          </p>
-        )}
+        <DayCheckin data={data} dayKey={selectedKey} isToday={isToday} info={info} onMood={onMood} onDay={onDay} />
+
         {memory && (
           <div className="memory">
             <span className="memory-label">
@@ -658,19 +660,17 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onO
         {groups.map((g) => {
           const d = g.habits.filter((h) => isDone(h, data.log, selectedKey)).length;
           return (
-            <section key={g.id} className="flex flex-col gap-2" aria-labelledby={`sec-${g.id}`}>
-              <div className="section-head">
+            <section key={g.id} className="hgroup" aria-labelledby={`sec-${g.id}`}>
+              <div className="hgroup-head">
                 <h2 id={`sec-${g.id}`}>{g.label}</h2>
-                <span className="flex items-center gap-2">
-                  {isToday && !pause && g.habits.length - d >= 2 && (
-                    <button type="button" className="routine-btn" onClick={() => setRunner(g.id)}>
-                      <Icon name="Play" size={12} strokeWidth={2.6} /> Rotina
-                    </button>
-                  )}
-                  <span className="section-count">
-                    {d} de {g.habits.length}
-                  </span>
+                <span className="hgroup-count">
+                  {d}/{g.habits.length}
                 </span>
+                {isToday && !pause && g.habits.length - d >= 2 && (
+                  <button type="button" className="routine-btn" onClick={() => setRunner(g.id)} aria-label={`Começar a rotina da ${g.label.toLowerCase()}`}>
+                    <Icon name="Play" size={11} strokeWidth={2.6} /> Rotina
+                  </button>
+                )}
               </div>
               <div className="group">
                 {g.habits.map((h) => (
@@ -692,31 +692,63 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onO
           );
         })}
 
-        {unlisted.length > 0 && (
-          <section className="flex flex-col gap-2" aria-labelledby="sec-off">
-            <div className="section-head">
-              <h2 id="sec-off" className="is-quiet">
-                Fora da programação
-              </h2>
-            </div>
-            <div className="off-list">
-              {unlisted.map((h) => (
-                <button key={h.id} type="button" className="off-item" onClick={() => onOpen(h)} style={{ '--c': colorOf(h.color).value }}>
-                  <Icon name={h.icon} size={15} />
-                  <span>{h.name}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
         <PartnerSection data={data} today={today} />
 
-        <button type="button" className="manage-link" onClick={onManage}>
-          <Icon name="ListOrdered" size={17} />
-          Organizar hábitos, arquivo, pausas e modo viagem
-        </button>
+        {unlisted.length > 0 && (
+          <section className="hgroup">
+            <button type="button" className="off-toggle" onClick={() => setShowOff((v) => !v)} aria-expanded={showOff}>
+              <span>Fora de hoje</span>
+              <span className="hgroup-count">{unlisted.length}</span>
+              <motion.span animate={{ rotate: showOff ? 0 : -90 }} transition={{ duration: 0.16, ease: EASE_OUT }}>
+                <Icon name="ChevronDown" size={15} />
+              </motion.span>
+            </button>
+            {showOff && (
+              <div className="off-list">
+                {unlisted.map((h) => (
+                  <button key={h.id} type="button" className="off-item" onClick={() => onOpen(h)} style={{ '--c': colorOf(h.color).value }}>
+                    <Icon name={h.icon} size={15} />
+                    <span>{h.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
+
+      <AnimatePresence>
+        {menu.state && (
+          <Popover key="hm" anchor={menu.state.anchor} desktop={desktop} onClose={menu.close} title="Hábitos" width={260} align="end">
+            <MenuList
+              items={[
+                ...(onStats ? [{ key: 'stats', label: 'Evolução e jardim', icon: 'Activity' }] : []),
+                ...(onDay
+                  ? [
+                      {
+                        key: 'hard',
+                        label: hard ? 'Desfazer dia difícil' : 'Dia difícil',
+                        icon: 'CloudDrizzle',
+                        hint: !hard && recentHard ? 'já usado na semana' : '',
+                        active: hard,
+                      },
+                    ]
+                  : []),
+                { key: 'manage', label: 'Organizar, pausas e viagem', icon: 'ListOrdered' },
+                { key: 'new', label: 'Novo hábito', icon: 'Plus' },
+              ]}
+              onPick={(it) => {
+                menu.close();
+                if (it.key === 'stats') onStats();
+                if (it.key === 'hard' && (hard || !recentHard)) onDay(selectedKey, { hard: !hard });
+                if (it.key === 'manage') onManage();
+                if (it.key === 'new') onCreate();
+              }}
+            />
+            {!hard && <p className="field-hint px-3 pb-2">Dia difícil: o que ficar pendente não conta e as sequências ficam protegidas. Um por semana.</p>}
+          </Popover>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {runner && (
           <RoutineRunner

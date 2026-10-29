@@ -300,3 +300,40 @@
 .settings-page .field { gap: 8px; }
 .set-menu .set-row { min-height: 60px; }
 .set-menu .sync-dot.inline { margin-right: 2px; }
+
+/* ---------- hábitos (layout limpo) ---------- */
+.today.is-clean, .is-clean .today-side, .is-clean .today-main { gap: 18px; }
+.ring, .ring * { -webkit-user-select: none; user-select: none; outline: none; }
+.ring-svg { pointer-events: none; }
+/* Dia escolhido: pílula clara e discreta em vez de um bloco sólido */
+.is-clean .day-pill { background: var(--surface); box-shadow: var(--pill-shadow), inset 0 0 0 1px var(--line); }
+.is-clean .day.is-selected .day-letter { color: var(--muted); }
+.is-clean .day.is-selected .day-num { color: var(--ink); }
+.is-clean .day.is-selected .mini-track { stroke: var(--line); }
+.is-clean .day.is-selected .mini-fill { stroke: var(--accent); }
+.hsum { display: flex; align-items: center; gap: 16px; padding: 14px 18px 14px 14px; border-radius: 20px; background: var(--surface); }
+.hsum .ring { width: 84px; height: 84px; }
+.hsum .ring-num { font-size: 21px; }
+.hsum .ring-pct { font-size: 12px; }
+.hsum .ring-sub { display: none; }
+.hsum-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.hsum-head { font-family: var(--font-display); font-size: 21px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.15; }
+.hsum-sub { font-size: 14px; color: var(--muted); }
+.hsum-link { align-self: flex-start; padding: 4px 0; color: var(--accent); }
+.checkin { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px 8px 16px; border-radius: 18px; background: var(--surface); }
+.checkin-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.checkin-label { font-size: 14px; font-weight: 550; color: var(--muted); white-space: nowrap; }
+.checkin .mood-row { gap: 0; }
+.checkin .mood-btn { width: 38px; height: 38px; }
+.checkin-note { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 0 2px; border-top: 1px solid var(--line); text-align: left; font-size: 14px; color: var(--muted); font-weight: 500; }
+.checkin-note.has-text { color: var(--ink); font-weight: 450; line-height: 1.4; padding: 8px 0; }
+.checkin-input { height: 40px; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--ink); font-size: 15px; outline: none; padding: 0; }
+.hgroup { display: flex; flex-direction: column; gap: 8px; }
+.hgroup-head { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 4px; }
+.hgroup-head h2 { font-family: var(--font-display); font-size: 17px; font-weight: 650; letter-spacing: -0.01em; }
+.hgroup-count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.hgroup-head .routine-btn { margin-left: auto; }
+.off-toggle { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 4px; font-size: 14px; font-weight: 600; color: var(--muted); align-self: flex-start; }
+.is-desktop .hsum { padding: 18px 22px 18px 18px; }
+.is-desktop .hsum .ring { width: 104px; height: 104px; }
+.is-desktop .hsum .ring-num { font-size: 26px; }

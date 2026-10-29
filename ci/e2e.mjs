@@ -196,11 +196,15 @@ try {
   await page.click('nav.tabbar button:has-text("Hábitos")');
   await page.waitForSelector('.ring');
   await shot(page, '12-celular-habitos');
-  await page.click('.hard-chip');
+  await page.click('button[aria-label="Mais opções de hábitos"]');
+  await page.click('.menu-item:has-text("Dia difícil")');
   await page.waitForTimeout(300);
   const dh = await store(page);
   ok('dia difícil fica gravado no dia', Object.values(dh.days || {}).some((d) => d.hard));
-  await page.click('.hard-chip');
+  await page.click('button[aria-label="Mais opções de hábitos"]');
+  await page.click('.menu-item:has-text("Desfazer dia difícil")');
+  await page.waitForTimeout(300);
+  ok('foco não fica preso no anel do dia', await page.evaluate(() => !(document.activeElement && document.activeElement.closest && document.activeElement.closest('.ring'))));
   const routine = page.locator('.routine-btn').first();
   if (await routine.count()) {
     await routine.click();
@@ -212,7 +216,8 @@ try {
     else await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
   }
-  await page.click('button[aria-label="Consistência"]');
+  await page.click('button[aria-label="Mais opções de hábitos"]');
+  await page.click('.menu-item:has-text("Evolução")');
   await page.waitForSelector('.stats');
   await shot(page, '13-celular-consistencia');
   await page.click('button[role="radio"]:has-text("Jardim")');
