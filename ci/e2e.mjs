@@ -225,7 +225,23 @@ try {
       }
       return out;
     }, box);
-    checks.push({ name: 'diagnóstico do anel', ok: true, detail: JSON.stringify({ tries, near, box }) });
+    const diff = await page.evaluate(() => {
+      const ring = document.querySelector('.hsum .ring');
+      const ref = document.createElement('div');
+      ring.parentNode.insertBefore(ref, ring);
+      const a = getComputedStyle(ring);
+      const b = getComputedStyle(ref);
+      const out = {};
+      for (let i = 0; i < a.length; i++) {
+        const k = a[i];
+        if (a.getPropertyValue(k) !== b.getPropertyValue(k) && !/^(width|height|inline-size|block-size|perspective-origin|transform-origin|position|flex|min-|max-)/.test(k)) out[k] = a.getPropertyValue(k).slice(0, 60);
+      }
+      const pb = getComputedStyle(ring, '::before').content;
+      const pa = getComputedStyle(ring, '::after').content;
+      ref.remove();
+      return { out, pb, pa, matchesFocus: ring.matches(':focus'), matchesFV: ring.matches(':focus-visible'), html: ring.outerHTML.slice(0, 160) };
+    });
+    checks.push({ name: 'diagnóstico do anel', ok: true, detail: JSON.stringify({ tries, near, box, diff }) });
   }
   await page.click('button[aria-label="Mais opções de hábitos"]');
   await page.click('.menu-item:has-text("Dia difícil")');
