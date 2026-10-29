@@ -1,6 +1,6 @@
 /* Ajustes: uma lista curta de categorias; cada uma abre na mesma folha (com voltar), para não virar um painel lotado. */
 import React, { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Sheet, Icon, Segmented, EASE_OUT } from './ui.jsx';
 import { COLORS, shortDate } from '../lib/habits.js';
 import { UF_NAMES, holidaysOf } from '../lib/holidays.js';
@@ -606,32 +606,29 @@ export function SettingsSheet({ desktop, store, todayKey, onClose, initial = nul
 
   return (
     <Sheet desktop={desktop} onClose={onClose} labelId="settings-title" header={header} className="settings-sheet">
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={page || 'root'}
-          className="settings"
-          initial={{ opacity: 0, x: page ? 12 : -12 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: page ? -12 : 12 }}
-          transition={{ duration: 0.16, ease: EASE_OUT }}
-        >
-          {!page && (
-            <Group>
-              {CATEGORIES.map((c) => (
-                <Row key={c.id} icon={c.icon} label={c.label} hint={c.hint} onClick={() => setPage(c.id)} />
-              ))}
-            </Group>
-          )}
-          {page === 'look' && <Look s={s} set={set} />}
-          {page === 'nav' && <Nav s={s} set={set} />}
-          {page === 'time' && <Time s={s} set={set} todayKey={todayKey} />}
-          {page === 'plan' && <Plan s={s} set={set} />}
-          {page === 'places' && <Places s={s} set={set} />}
-          {page === 'device' && <Device device={store.device} setDevice={store.setDevice} />}
-          {page === 'reminders' && <Reminders data={store.data} />}
-          {page === 'backup' && <Backups store={store} />}
-        </motion.div>
-      </AnimatePresence>
+      <motion.div
+        key={page || 'root'}
+        className="settings"
+        initial={{ opacity: 0, x: page ? 12 : -12 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.16, ease: EASE_OUT }}
+      >
+        {!page && (
+          <Group>
+            {CATEGORIES.map((c) => (
+              <Row key={c.id} icon={c.icon} label={c.label} hint={c.hint} onClick={() => setPage(c.id)} />
+            ))}
+          </Group>
+        )}
+        {page === 'look' && <Look s={s} set={set} />}
+        {page === 'nav' && <Nav s={s} set={set} />}
+        {page === 'time' && <Time s={s} set={set} todayKey={todayKey} />}
+        {page === 'plan' && <Plan s={s} set={set} />}
+        {page === 'places' && <Places s={s} set={set} />}
+        {page === 'device' && <Device device={store.device} setDevice={store.setDevice} />}
+        {page === 'reminders' && <Reminders data={store.data} />}
+        {page === 'backup' && <Backups store={store} />}
+      </motion.div>
     </Sheet>
   );
 }
