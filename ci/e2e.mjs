@@ -240,7 +240,7 @@ try {
   await page.click('.rail button:has-text("Hábitos")');
   await page.waitForSelector('.ring');
   await shot(page, '31-desk-habitos');
-  await page.click('.rail button:has-text("Consistência")');
+  await page.click('.rail button[title^="Consistência"]');
   await page.waitForSelector('.stats');
   await shot(page, '32-desk-consistencia');
 
