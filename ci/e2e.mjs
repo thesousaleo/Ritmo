@@ -18,8 +18,11 @@ const ok = (name, cond, detail = '') => {
 };
 
 const browser = await chromium.launch();
+let step = '';
+let curPage = null;
 
 async function session(name, opts) {
+  curPage = null;
   const ctx = await browser.newContext({ locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', ...opts });
   const page = await ctx.newPage();
   page.on('console', (m) => {
@@ -28,6 +31,7 @@ async function session(name, opts) {
   page.on('pageerror', (e) => problems.push(`[${name}] erro: ${String(e.message || e).slice(0, 300)}`));
   await page.goto(URL, { waitUntil: 'networkidle' });
   await page.waitForSelector('.page', { timeout: 15000 });
+  curPage = page;
   return { ctx, page };
 }
 
@@ -55,10 +59,11 @@ async function mouseDrag(page, from, to) {
 /* Celular                                                             */
 /* ------------------------------------------------------------------ */
 try {
-  const { ctx, page } = await session('celular', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  var { ctx, page } = await session('celular', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await shot(page, '01-celular-hoje');
 
   // Entrada rápida pelo botão flutuante
+  step = 'Entrada rápida pelo botão flutuante';
   await page.click('button.fab.is-float');
   await page.waitForSelector('.qa-input');
   await page.fill('.qa-input', 'Comprar café amanhã 9h #casa !1');
@@ -69,6 +74,7 @@ try {
   const cafe = (d1.tasks || []).find((t) => t.title === 'Comprar café');
   ok('entrada rápida cria tarefa com data, hora, prioridade e etiqueta', cafe && cafe.time === '09:00' && cafe.priority === 3 && (cafe.tags || []).includes('casa') && !!cafe.date, JSON.stringify(cafe));
   // Entrada rápida: quinto dia útil + valor
+  step = 'Entrada rápida: quinto dia útil + valor';
   await page.fill('.qa-input', 'Pagar aluguel todo quinto dia útil R$ 1.200');
   await page.keyboard.press('Enter');
   await page.waitForTimeout(300);
@@ -76,6 +82,7 @@ try {
   const alug = (dq.tasks || []).find((t) => t.title === 'Pagar aluguel');
   ok('entrada rápida entende “todo quinto dia útil” e valor', alug && alug.repeat === 'monthly:biz5' && alug.amount === 1200, JSON.stringify(alug && { r: alug.repeat, a: alug.amount }));
   // Colar várias linhas cria várias tarefas
+  step = 'Colar várias linhas cria várias tarefas';
   await page.evaluate(() => {
     const el = document.querySelector('.qa-input');
     const dt = new DataTransfer();
@@ -89,6 +96,7 @@ try {
   await page.waitForTimeout(400);
 
   // Planejar o dia (menu de Hoje)
+  step = 'Planejar o dia (menu de Hoje)';
   await page.click('button[aria-label="Planejar"]');
   await page.waitForTimeout(300);
   await shot(page, '40-celular-menu-planejar');
@@ -99,6 +107,7 @@ try {
   await page.waitForTimeout(400);
 
   // Gaveta de listas
+  step = 'Gaveta de listas';
   await page.click('button[aria-label="Listas"]');
   await page.waitForSelector('.drawer');
   await shot(page, '03-celular-gaveta-listas');
@@ -108,6 +117,7 @@ try {
   await shot(page, '04-celular-amanha');
 
   // Detalhe da tarefa
+  step = 'Detalhe da tarefa';
   await page.click('.trow:has-text("Comprar café") .trow-main');
   await page.waitForSelector('.sheet.is-task');
   await shot(page, '05-celular-detalhe');
@@ -119,6 +129,7 @@ try {
   await page.waitForTimeout(400);
 
   // Concluir na lista (check aparece antes de mudar de grupo)
+  step = 'Concluir na lista (check aparece antes de mudar de grupo)';
   await page.click('button[aria-label="Listas"]');
   await page.click('.drawer .lp-item:has-text("Hoje")');
   await page.waitForTimeout(400);
@@ -131,6 +142,7 @@ try {
   await shot(page, '06-celular-hoje-concluida');
 
   // Lista no celular: título não pode ficar sob os controles de exibição
+  step = 'Lista no celular: título não pode ficar sob os controles de exibição';
   await page.click('button[aria-label="Listas"]');
   await page.click('.drawer .lp-item:has-text("Trabalho")');
   await page.waitForSelector('.list-bar');
@@ -148,6 +160,7 @@ try {
   await page.click('.list-controls button[aria-label="Lista"]');
 
   // Agenda
+  step = 'Agenda';
   await page.click('nav.tabbar button:has-text("Agenda")');
   await page.waitForSelector('.cal');
   await shot(page, '07-celular-agenda-mes');
@@ -162,11 +175,13 @@ try {
   await shot(page, '42-celular-agenda-ano');
 
   // Matriz
+  step = 'Matriz';
   await page.click('nav.tabbar button:has-text("Matriz")');
   await page.waitForSelector('.matrix');
   await shot(page, '10-celular-matriz');
 
   // Foco
+  step = 'Foco';
   await page.click('nav.tabbar button:has-text("Foco")');
   await page.waitForSelector('.focus-ring');
   await page.click('button.focus-play');
@@ -177,6 +192,7 @@ try {
   await page.click('button.focus-play');
 
   // Hábitos e consistência
+  step = 'Hábitos e consistência';
   await page.click('nav.tabbar button:has-text("Hábitos")');
   await page.waitForSelector('.ring');
   await shot(page, '12-celular-habitos');
@@ -207,6 +223,7 @@ try {
   await shot(page, '45-celular-insights');
 
   // Escuro
+  step = 'Escuro';
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.click('nav.tabbar button:has-text("Tarefas")');
   await shot(page, '14-celular-escuro-tarefas');
@@ -215,14 +232,15 @@ try {
   await shot(page, '15-celular-escuro-agenda');
   await ctx.close();
 } catch (e) {
-  problems.push(`[celular] fluxo interrompido: ${e.message.split('\n')[0]}`);
+  if (curPage) await curPage.screenshot({ path: `${OUT}/99-falha-celular.png` }).catch(() => {});
+  problems.push(`[celular] fluxo interrompido em "${step}": ${e.message.split('\n').slice(0, 3).join(' | ')}`);
 }
 
 /* ------------------------------------------------------------------ */
 /* Computador                                                          */
 /* ------------------------------------------------------------------ */
 try {
-  const { ctx, page } = await session('computador', { viewport: { width: 1440, height: 900 } });
+  var { ctx, page } = await session('computador', { viewport: { width: 1440, height: 900 } });
   await shot(page, '20-desk-hoje');
 
   await page.fill('.qa-input', 'Revisar orçamento sexta 14h !2 ^trabalho');
@@ -234,12 +252,14 @@ try {
   ok('entrada rápida (desktop) usa lista ^trabalho e prioridade !2', orc && orc.listId === 'trabalho' && orc.priority === 2 && orc.time === '14:00', JSON.stringify(orc));
 
   // Painel de detalhe
+  step = 'Painel de detalhe';
   await page.click('.trow:has-text("Revisar proposta") .trow-main');
   await page.waitForSelector('.td-panel');
   await shot(page, '22-desk-painel-detalhe');
   await page.keyboard.press('Escape');
 
   // Lista Trabalho em Kanban e arrastar card
+  step = 'Lista Trabalho em Kanban e arrastar card';
   await page.click('.lists-col .lp-item:has-text("Trabalho")');
   await page.click('button[aria-label="Kanban"]');
   await page.waitForSelector('.kanban');
@@ -252,6 +272,7 @@ try {
   await page.click('button[aria-label="Lista"]');
 
   // Arrastar tarefa para "Amanhã" na barra de listas
+  step = 'Arrastar tarefa para "Amanhã" na barra de listas';
   await page.click('.lists-col .lp-item:has-text("Hoje")');
   await page.waitForTimeout(300);
   await mouseDrag(page, page.locator('.trow:has-text("Responder e-mails")'), page.locator('.lists-col .lp-item:has-text("Amanhã")'));
@@ -260,6 +281,7 @@ try {
   ok('arrastar para Amanhã muda a data', em && em.date > new Date().toISOString().slice(0, 10), em && em.date);
 
   // Agenda semanal e arrastar bloco
+  step = 'Agenda semanal e arrastar bloco';
   await page.click('.rail button:has-text("Agenda")');
   await page.waitForSelector('.cal');
   await shot(page, '25-desk-agenda-mes');
@@ -276,6 +298,7 @@ try {
     await shot(page, '27-desk-agenda-arrastada');
   } else ok('bloco da tarefa aparece na semana', false);
   // Criar evento clicando num horário vazio
+  step = 'Criar evento clicando num horário vazio';
   await page.click('button[role="radio"]:has-text("Dia")');
   await page.waitForSelector('.tg-col');
   await page.evaluate(() => {
@@ -294,6 +317,7 @@ try {
   ok('criar evento pela grade', (d5.events || []).some((e) => e.title === 'Jantar com amigos' && e.start >= '20:00'));
 
   // Matriz: arrastar entre quadrantes
+  step = 'Matriz: arrastar entre quadrantes';
   await page.click('.rail button:has-text("Matriz")');
   await page.waitForSelector('.matrix');
   await shot(page, '29-desk-matriz');
@@ -304,6 +328,7 @@ try {
   ok('arrastar na matriz muda a prioridade', (d6.tasks || []).some((t) => t.title === q1Title && t.priority === 0), q1Title);
 
   // Foco, hábitos, consistência
+  step = 'Foco, hábitos, consistência';
   await page.click('.rail button:has-text("Foco")');
   await page.waitForSelector('.focus-ring');
   await shot(page, '30-desk-foco');
@@ -315,6 +340,7 @@ try {
   await shot(page, '32-desk-consistencia');
 
   // Ajustes: tema preto
+  step = 'Ajustes: tema preto';
   await page.keyboard.press(',');
   await page.waitForSelector('.settings');
   await shot(page, '46-desk-ajustes');
@@ -332,6 +358,7 @@ try {
   await page.waitForTimeout(300);
 
   // Modelos
+  step = 'Modelos';
   await page.click('.rail button:has-text("Tarefas")');
   const before = ((await store(page)).tasks || []).length;
   await page.click('.lists-col button[aria-label="Adicionar lista, modelo ou filtro"]');
@@ -343,6 +370,7 @@ try {
   ok('modelo cria as tarefas', ((await store(page)).tasks || []).length === before + 4);
 
   // Filtro inteligente
+  step = 'Filtro inteligente';
   await page.click('.lists-col button[aria-label="Adicionar lista, modelo ou filtro"]');
   await page.click('.menu-item:has-text("Novo filtro")');
   await page.fill('input[aria-label="Nome do filtro"]', 'Alta prioridade');
@@ -354,6 +382,7 @@ try {
   await shot(page, '51-desk-filtro-visao');
 
   // Agenda: ano e foco em tela cheia
+  step = 'Agenda: ano e foco em tela cheia';
   await page.click('.rail button:has-text("Agenda")');
   await page.click('button[role="radio"]:has-text("Ano")');
   await page.waitForSelector('.year');
@@ -361,6 +390,7 @@ try {
   await page.click('button[role="radio"]:has-text("Mês")');
 
   // Busca por teclado
+  step = 'Busca por teclado';
   await page.keyboard.press('/');
   await page.waitForSelector('.search-input');
   await page.keyboard.type('dentista');
@@ -369,6 +399,7 @@ try {
   await page.keyboard.press('Escape');
 
   // Escuro
+  step = 'Escuro';
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.click('.rail button:has-text("Tarefas")');
   await page.click('.trow:has-text("Revisar proposta") .trow-main');
@@ -377,7 +408,8 @@ try {
   await shot(page, '35-desk-escuro-agenda');
   await ctx.close();
 } catch (e) {
-  problems.push(`[computador] fluxo interrompido: ${e.message.split('\n')[0]}`);
+  if (curPage) await curPage.screenshot({ path: `${OUT}/99-falha-computador.png` }).catch(() => {});
+  problems.push(`[computador] fluxo interrompido em "${step}": ${e.message.split('\n').slice(0, 3).join(' | ')}`);
 }
 
 await browser.close();
