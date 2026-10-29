@@ -74,6 +74,7 @@ export function normalizeHabit(h) {
     duration: 0,
     reminder: '',
     archived: false,
+    minimum: '',
     unit: '',
     target: 1,
     period: 'any',
@@ -96,6 +97,8 @@ export function normalizeData(d) {
     ...d,
     habits: (d.habits || []).map(normalizeHabit),
     log: d.log || {},
+    minimal: d.minimal || {},
+    days: d.days || {},
   };
 }
 
@@ -107,10 +110,19 @@ export const countOf = (log, key, id) => (log[key] && log[key][id]) || 0;
 export const isDone = (h, log, key) => countOf(log, key, h.id) >= h.target;
 export const noteOf = (data, key, id) => (data.notes && data.notes[key] && data.notes[key][id]) || '';
 
-export const breakOn = (data, key) => (data.breaks || []).find((b) => key >= b.start && key <= b.end) || null;
-export const inBreak = (data, key) => !!breakOn(data, key);
-const weekHasBreak = (data, ws) => {
-  for (let i = 0; i < 7; i++) if (inBreak(data, keyOf(addDays(ws, i)))) return true;
+/**
+ * Pausas: sem habitIds valem para todos os hábitos (férias); com habitIds, só para aqueles (modo viagem por hábito).
+ * Sem hábito informado, só as pausas gerais contam.
+ */
+export const breakOn = (data, key, h) =>
+  (data.breaks || []).find((b) => key >= b.start && key <= b.end && (!b.habitIds || !b.habitIds.length || (h && b.habitIds.includes(h.id)))) || null;
+export const inBreak = (data, key, h) => !!breakOn(data, key, h);
+/** Dia difícil: o dia não cobra nada e não quebra sequências. */
+export const isHardDay = (data, key) => !!(data.days && data.days[key] && data.days[key].hard);
+const skipDay = (data, key, h) => inBreak(data, key, h) || isHardDay(data, key);
+export const isMinimal = (data, key, id) => !!(data.minimal && data.minimal[key] && data.minimal[key][id]);
+const weekHasBreak = (data, ws, h) => {
+  for (let i = 0; i < 7; i++) if (inBreak(data, keyOf(addDays(ws, i)), h)) return true;
   return false;
 };
 
@@ -122,7 +134,7 @@ export function isListed(h, date) {
 
 /** O dia conta como obrigatório (anel, mapa, sequência). Semanais e dias de pausa não contam. */
 export function isScheduled(h, date, data) {
-  return isListed(h, date) && !isWeekly(h) && !inBreak(data, keyOf(date));
+  return isListed(h, date) && !isWeekly(h) && !skipDay(data, keyOf(date), h);
 }
 
 /** Quantas vezes o hábito semanal foi cumprido na semana que começa em ws. */
@@ -145,7 +157,7 @@ export function currentStreak(h, data, today) {
     const created = weekStart(fromKey(h.createdAt));
     let ws = weekStart(today);
     for (let i = 0; i < 520 && ws >= created; i++, ws = addDays(ws, -7)) {
-      if (weekHasBreak(data, ws)) continue;
+      if (weekHasBreak(data, ws, h)) continue;
       if (weekCount(h, log, ws) >= h.perWeek) streak++;
       else if (i > 0) break;
     }
@@ -155,8 +167,9 @@ export function currentStreak(h, data, today) {
   for (let i = 0; i < 3000; i++, d = addDays(d, -1)) {
     const k = keyOf(d);
     if (k < h.createdAt) break;
-    if (!h.days.includes(d.getDay()) || inBreak(data, k)) continue;
+    if (!h.days.includes(d.getDay())) continue;
     if (isDone(h, log, k)) streak++;
+    else if (skipDay(data, k, h)) continue;
     else if (i > 0) break;
   }
   return streak;
@@ -170,7 +183,7 @@ export function bestStreak(h, data, today) {
   if (isWeekly(h)) {
     const current = weekStart(today);
     for (let ws = weekStart(fromKey(h.createdAt)); ws <= current; ws = addDays(ws, 7)) {
-      if (weekHasBreak(data, ws)) continue;
+      if (weekHasBreak(data, ws, h)) continue;
       if (weekCount(h, log, ws) >= h.perWeek) best = Math.max(best, ++run);
       else if (ws < current) run = 0;
     }
@@ -179,8 +192,9 @@ export function bestStreak(h, data, today) {
   const todayKey = keyOf(today);
   for (let d = fromKey(h.createdAt); d <= today; d = addDays(d, 1)) {
     const k = keyOf(d);
-    if (!h.days.includes(d.getDay()) || inBreak(data, k)) continue;
+    if (!h.days.includes(d.getDay())) continue;
     if (isDone(h, log, k)) best = Math.max(best, ++run);
+    else if (skipDay(data, k, h)) continue;
     else if (k !== todayKey) run = 0;
   }
   return best;
@@ -193,8 +207,9 @@ export function daySummary(data, date) {
   let done = 0;
   let partial = 0;
   const paused = inBreak(data, key);
+  const hard = isHardDay(data, key);
   for (const h of data.habits) {
-    if (!isListed(h, date) || paused) continue;
+    if (!isListed(h, date) || paused || inBreak(data, key, h)) continue;
     const c = countOf(data.log, key, h.id);
     if (isWeekly(h)) {
       if (c >= h.target) {
@@ -204,11 +219,12 @@ export function daySummary(data, date) {
       }
       continue;
     }
+    if (hard && c < h.target) continue; // dia difícil: o que não foi feito não cobra
     total++;
     if (c >= h.target) done++;
     partial += Math.min(c / h.target, 1);
   }
-  return { total, done, ratio: total ? done / total : null, partial: total ? partial / total : 0, paused };
+  return { total, done, ratio: total ? done / total : null, partial: total ? partial / total : 0, paused, hard };
 }
 
 /** Taxa de conclusão recente: diários nos últimos 30 dias; semanais nas últimas 4 semanas. */
@@ -220,7 +236,7 @@ export function habitRate(h, data, today) {
     const created = weekStart(fromKey(h.createdAt));
     for (let i = 0; i < 5; i++) {
       const ws = addDays(current, -7 * i);
-      if (ws < created || weekHasBreak(data, ws)) continue;
+      if (ws < created || weekHasBreak(data, ws, h)) continue;
       const complete = weekCount(h, data.log, ws) >= h.perWeek;
       if (i === 0 && !complete) continue;
       total++;
@@ -254,7 +270,7 @@ export function weekdayRates(h, data, today, weeks = 12) {
     const d = addDays(today, -i);
     const k = keyOf(d);
     if (k < h.createdAt) break;
-    if (inBreak(data, k)) continue;
+    if (inBreak(data, k, h)) continue;
     if (isWeekly(h)) {
       total[d.getDay()]++;
       if (isDone(h, data.log, k)) done[d.getDay()]++;
@@ -271,8 +287,9 @@ export function habitDayState(h, data, date, todayKey) {
   const k = keyOf(date);
   if (k > todayKey) return 'future';
   if (k < h.createdAt) return 'before';
-  if (inBreak(data, k)) return 'break';
-  if (isDone(h, data.log, k)) return 'done';
+  if (isDone(h, data.log, k)) return isMinimal(data, k, h.id) ? 'minimal' : 'done';
+  if (inBreak(data, k, h)) return 'break';
+  if (isHardDay(data, k) && isListed(h, date) && !isWeekly(h) && k !== todayKey) return 'rest';
   if (!isListed(h, date) || isWeekly(h)) return 'off';
   if (k === todayKey) return 'today';
   return countOf(data.log, k, h.id) > 0 ? 'partial' : 'miss';

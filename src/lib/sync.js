@@ -19,6 +19,14 @@ const CHUNK = 500;
 
 const nowIso = () => new Date().toISOString();
 
+/*
+ * Listas compartilhadas: linhas de outro dono ganham um id local "dono/id" (ids como "inbox" se repetem entre contas).
+ * ownerId marca o dono; ao enviar, a linha volta para user_id = dono e o id original.
+ */
+export const localId = (ownerId, id) => (ownerId ? `${ownerId}/${id}` : id);
+export const remoteId = (id) => (id && id.includes('/') ? id.slice(id.lastIndexOf('/') + 1) : id);
+const ownerOfRow = (r, me) => (me && r.user_id && r.user_id !== me ? r.user_id : null);
+
 /* ---------- linhas <-> objetos do app ---------- */
 export const toHabitRow = (h, userId, position) => ({
   user_id: userId,
@@ -39,6 +47,7 @@ export const toHabitRow = (h, userId, position) => ({
   duration_min: h.duration || 0,
   reminder: h.reminder || null,
   archived: !!h.archived,
+  minimum: h.minimum || '',
   updated_at: nowIso(),
 });
 
@@ -59,10 +68,29 @@ export const fromHabitRow = (r) =>
     duration: Number(r.duration_min) || 0,
     reminder: r.reminder || '',
     archived: !!r.archived,
+    minimum: r.minimum || '',
   });
 
-export const checkinRow = (userId, habitId, day, count, note = '') => ({ user_id: userId, habit_id: habitId, day, count, note: note || '', updated_at: nowIso() });
-export const moodRow = (userId, day, mood) => ({ user_id: userId, day, mood: mood || 0, updated_at: nowIso() });
+export const checkinRow = (userId, habitId, day, count, note = '', minimal = false) => ({
+  user_id: userId,
+  habit_id: habitId,
+  day,
+  count,
+  note: note || '',
+  minimal: !!minimal && count > 0,
+  updated_at: nowIso(),
+});
+/** Uma linha por dia: humor + diário de uma linha + dia difícil + rituais feitos. */
+export const moodRow = (userId, day, mood, info = {}) => ({
+  user_id: userId,
+  day,
+  mood: mood || 0,
+  journal: (info.journal || '').slice(0, 500),
+  hard: !!info.hard,
+  planned: !!info.planned,
+  shutdown: !!info.shutdown,
+  updated_at: nowIso(),
+});
 
 export const profileRow = (userId, p) => ({
   user_id: userId,
@@ -74,24 +102,39 @@ export const profileRow = (userId, p) => ({
 });
 
 export const toListRow = (l, userId) => ({
-  user_id: userId,
-  id: l.id,
+  user_id: l.ownerId || userId,
+  id: remoteId(l.id),
   name: l.name,
   color: l.color,
   icon: l.icon,
   position: l.position || 0,
   sections: (l.sections || []).map((s) => ({ id: s.id, name: s.name })),
   view: l.view === 'kanban' ? 'kanban' : 'list',
+  cover: l.cover || '',
+  kind: l.kind === 'bills' ? 'bills' : 'tasks',
   deleted: !!l.deleted,
   updated_at: nowIso(),
 });
-export const fromListRow = (r) =>
-  normalizeList({ id: r.id, name: r.name, color: r.color, icon: r.icon, position: Number(r.position) || 0, sections: Array.isArray(r.sections) ? r.sections : [], view: r.view });
+export const fromListRow = (r, me) => {
+  const owner = ownerOfRow(r, me);
+  return normalizeList({
+    id: localId(owner, r.id),
+    ownerId: owner,
+    name: r.name,
+    color: r.color,
+    icon: r.icon,
+    position: Number(r.position) || 0,
+    sections: Array.isArray(r.sections) ? r.sections : [],
+    view: r.view,
+    cover: r.cover || '',
+    kind: r.kind || 'tasks',
+  });
+};
 
 export const toTaskRow = (t, userId) => ({
-  user_id: userId,
-  id: t.id,
-  list_id: t.listId || 'inbox',
+  user_id: t.ownerId || userId,
+  id: remoteId(t.id),
+  list_id: remoteId(t.listId || 'inbox'),
   title: (t.title || '').slice(0, 300) || 'Sem título',
   notes: t.notes || '',
   due_date: t.date || null,
@@ -107,13 +150,24 @@ export const toTaskRow = (t, userId) => ({
   done: !!t.done,
   completed_at: t.completedAt || null,
   created_at: t.createdAt || nowIso(),
+  deadline: t.deadline || null,
+  someday: !!t.someday,
+  postponed: Math.min(999, t.postponed || 0),
+  energy: t.energy || 0,
+  amount: t.amount === null || t.amount === undefined || t.amount === '' ? null : Number(t.amount),
+  attachments: (t.attachments || []).map((a) => ({ id: a.id, name: a.name, path: a.path, size: a.size || 0, type: a.type || '' })),
+  nag: !!t.nag,
+  place: t.place || '',
+  assignee: t.assignee || null,
   deleted: !!t.deleted,
   updated_at: nowIso(),
 });
-export const fromTaskRow = (r) =>
-  normalizeTask({
-    id: r.id,
-    listId: r.list_id,
+export const fromTaskRow = (r, me) => {
+  const owner = ownerOfRow(r, me);
+  return normalizeTask({
+    id: localId(owner, r.id),
+    ownerId: owner,
+    listId: localId(owner, r.list_id),
     title: r.title,
     notes: r.notes || '',
     date: r.due_date ? String(r.due_date).slice(0, 10) : '',
@@ -129,7 +183,17 @@ export const fromTaskRow = (r) =>
     done: !!r.done,
     completedAt: r.completed_at || null,
     createdAt: r.created_at,
+    deadline: r.deadline ? String(r.deadline).slice(0, 10) : '',
+    someday: !!r.someday,
+    postponed: Number(r.postponed) || 0,
+    energy: Number(r.energy) || 0,
+    amount: r.amount === null || r.amount === undefined ? null : Number(r.amount),
+    attachments: Array.isArray(r.attachments) ? r.attachments : [],
+    nag: !!r.nag,
+    place: r.place || '',
+    assignee: r.assignee || null,
   });
+};
 
 export const toEventRow = (e, userId) => ({
   user_id: userId,
@@ -145,6 +209,7 @@ export const toEventRow = (e, userId) => ({
   color: e.color || 'cobalt',
   repeat: e.repeat || '',
   reminder: e.reminder ?? -1,
+  countdown: !!e.countdown,
   deleted: !!e.deleted,
   updated_at: nowIso(),
 });
@@ -162,6 +227,7 @@ export const fromEventRow = (r) =>
     color: r.color,
     repeat: r.repeat || '',
     reminder: r.reminder ?? -1,
+    countdown: !!r.countdown,
   });
 
 export const toFocusRow = (f, userId) => ({
@@ -193,15 +259,16 @@ const tableOf = (name) => TABLES.find((t) => t.name === name);
 export const emptyPending = () => ({ habits: {}, lists: {}, tasks: {}, events: {}, focus: {}, checkins: {}, moods: {}, profile: null });
 
 /** Junta linhas do servidor com a fila local (a fila vence) e remove as excluídas. */
-function merged(serverRows = [], pendingMap = {}) {
+function merged(serverRows = [], pendingMap = {}, me = null) {
   const byId = new Map();
-  for (const r of serverRows) byId.set(r.id, r);
-  for (const r of Object.values(pendingMap)) byId.set(r.id, r);
+  const key = (r) => localId(ownerOfRow(r, me), r.id);
+  for (const r of serverRows) byId.set(key(r), r);
+  for (const r of Object.values(pendingMap)) byId.set(key(r), r);
   return [...byId.values()].filter((r) => !r.deleted);
 }
 
 /** Estado do app a partir do servidor + fila local por cima. Função pura (testada em test/sync.test.mjs). */
-export function buildSnapshot(server, pending) {
+export function buildSnapshot(server, pending, me = null) {
   const { checkinRows = [], moodRows = [], profileRow: prof = null } = server;
   const habitRowsAll = new Map();
   for (const r of server.habitRows || []) habitRowsAll.set(r.id, r);
@@ -212,6 +279,7 @@ export function buildSnapshot(server, pending) {
 
   const log = {};
   const notes = {};
+  const minimal = {};
   const put = (r) => {
     if (!visible.has(r.habit_id)) return;
     const day = String(r.day).slice(0, 10);
@@ -221,6 +289,11 @@ export function buildSnapshot(server, pending) {
     else if (log[day]) {
       delete log[day][r.habit_id];
       if (!Object.keys(log[day]).length) delete log[day];
+    }
+    if (count > 0 && r.minimal) (minimal[day] = minimal[day] || {})[r.habit_id] = true;
+    else if (minimal[day]) {
+      delete minimal[day][r.habit_id];
+      if (!Object.keys(minimal[day]).length) delete minimal[day];
     }
     if (note) (notes[day] = notes[day] || {})[r.habit_id] = note;
     else if (notes[day]) {
@@ -232,29 +305,59 @@ export function buildSnapshot(server, pending) {
   Object.values(pending.checkins || {}).forEach(put);
 
   const moods = {};
+  const days = {};
   const putMood = (r) => {
     const day = String(r.day).slice(0, 10);
     if (r.mood > 0) moods[day] = Number(r.mood);
     else delete moods[day];
+    const info = { journal: r.journal || '', hard: !!r.hard, planned: !!r.planned, shutdown: !!r.shutdown };
+    if (info.journal || info.hard || info.planned || info.shutdown) days[day] = info;
+    else delete days[day];
   };
   moodRows.forEach(putMood);
   Object.values(pending.moods || {}).forEach(putMood);
 
-  const lists = merged(server.listRows, pending.lists).map(fromListRow).sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
-  const tasks = merged(server.taskRows, pending.tasks).map(fromTaskRow);
+  // Lista compartilhada da qual saí (ou fui removido): some junto com as tarefas dela
+  const lists = merged(server.listRows, pending.lists, me)
+    .map((r) => fromListRow(r, me))
+    .sort((a, b) => (a.ownerId ? 1 : 0) - (b.ownerId ? 1 : 0) || a.position - b.position || a.id.localeCompare(b.id));
+  const listIds = new Set(lists.map((l) => l.id));
+  const tasks = merged(server.taskRows, pending.tasks, me)
+    .map((r) => fromTaskRow(r, me))
+    .filter((t) => !t.ownerId || listIds.has(t.listId));
   const events = merged(server.eventRows, pending.events).map(fromEventRow);
   const focus = merged(server.focusRows, pending.focus).map(fromFocusRow);
+  const shares = (server.shareRows || []).map((r) => ({
+    ownerId: r.owner_id,
+    listId: r.owner_id === me ? r.list_id : localId(r.owner_id, r.list_id),
+    memberId: r.member_id,
+    memberEmail: r.member_email || '',
+    memberName: r.member_name || '',
+    ownerName: r.owner_name || '',
+  }));
+  const partners = (server.partnerRows || []).map((r) => ({
+    ownerId: r.owner_id,
+    habitId: r.habit_id,
+    partnerId: r.partner_id,
+    partnerEmail: r.partner_email || '',
+    partnerName: r.partner_name || '',
+  }));
 
   const p = pending.profile || prof;
   return {
     habits,
     log,
     notes,
+    minimal,
     moods,
+    days,
     lists,
     tasks,
     events,
     focus,
+    shares,
+    partners,
+    partnerHabits: Array.isArray(server.partnerHabits) ? server.partnerHabits : [],
     name: p ? p.name : null,
     breaks: p && Array.isArray(p.breaks) ? p.breaks : null,
     weeklyEmail: p ? !!p.weekly_email : null,
@@ -276,12 +379,20 @@ export function uploadRows(data, userId) {
       if (!habits[habitId]) continue;
       const count = ((data.log || {})[day] || {})[habitId] || 0;
       const note = ((data.notes || {})[day] || {})[habitId] || '';
-      if (count > 0 || note) checkins[`${habitId}|${day}`] = checkinRow(userId, habitId, day, count, note);
+      const min = !!((data.minimal || {})[day] || {})[habitId];
+      if (count > 0 || note) checkins[`${habitId}|${day}`] = checkinRow(userId, habitId, day, count, note, min);
     }
   }
   const moods = {};
-  for (const [day, mood] of Object.entries(data.moods || {})) if (mood > 0) moods[day] = moodRow(userId, day, mood);
-  const byId = (list, fn) => Object.fromEntries((list || []).map((x) => [x.id, fn(x, userId)]));
+  const dayKeys = new Set([...Object.keys(data.moods || {}), ...Object.keys(data.days || {})]);
+  for (const day of dayKeys) {
+    const mood = (data.moods || {})[day] || 0;
+    const info = (data.days || {})[day] || {};
+    if (mood > 0 || info.journal || info.hard || info.planned || info.shutdown) moods[day] = moodRow(userId, day, mood, info);
+  }
+  // Só o que é deste usuário sobe numa conta nova (listas compartilhadas ficam com o dono)
+  const own = (list) => (list || []).filter((x) => !x.ownerId);
+  const byId = (list, fn) => Object.fromEntries(own(list).map((x) => [x.id, fn(x, userId)]));
   return {
     habits,
     checkins,
@@ -349,6 +460,23 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     }
   }
 
+  /**
+   * Lote recusado pelo banco (permissão revogada numa lista compartilhada, dado inválido…):
+   * tenta linha a linha e descarta só as recusadas, para uma linha ruim não travar a fila inteira.
+   * Devolve as chaves descartadas.
+   */
+  async function upsertOneByOne(table, entries, onConflict) {
+    const dropped = [];
+    for (const [k, row] of entries) {
+      const { error } = await client.from(table).upsert([row], { onConflict });
+      if (!error) continue;
+      if (isNetworkError(error)) throw error;
+      console.warn('[ritmo] linha recusada pelo servidor', table, k, error.code, error.message);
+      dropped.push(k);
+    }
+    return dropped;
+  }
+
   async function flush() {
     if (!userId || flushing || !hasPending()) {
       if (userId && !flushing && !hasPending() && status === 'syncing') setStatus('synced');
@@ -361,6 +489,7 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     flushing = true;
     setStatus('syncing');
     const gen = generation;
+    let needsPull = false;
     const batch = {};
     for (const t of TABLES) batch[t.name] = { ...(pending[t.name] || {}) };
     batch.profile = pending.profile;
@@ -371,11 +500,11 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
         try {
           await upsertChunks(t.table || t.name, rows, t.conflict);
         } catch (e) {
-          // Check-in de um hábito que não existe no servidor: descarta em vez de travar a fila
-          if (t.fk && e && e.code === '23503') {
-            for (const k of Object.keys(batch[t.name])) if (pending[t.name][k] === batch[t.name][k]) delete pending[t.name][k];
-            batch[t.name] = {};
-          } else throw e;
+          if (isNetworkError(e)) throw e;
+          // Linha a linha: descarta só o que o servidor recusa (ex.: check-in de hábito apagado, lista que deixou de ser compartilhada)
+          const dropped = await upsertOneByOne(t.table || t.name, Object.entries(batch[t.name]), t.conflict);
+          for (const k of dropped) if (pending[t.name][k] === batch[t.name][k]) delete pending[t.name][k];
+          if (dropped.length) needsPull = true;
         }
       }
       if (batch.profile) {
@@ -387,6 +516,7 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
       for (const t of TABLES) for (const [k, r] of Object.entries(batch[t.name])) if (pending[t.name][k] === r) delete pending[t.name][k];
       if (pending.profile === batch.profile) pending.profile = null;
       persist();
+      if (needsPull) schedulePull(300);
       if (hasPending()) scheduleFlush(50);
       else setStatus('synced');
     } catch (e) {
@@ -418,14 +548,40 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     if (h.error) throw h.error;
     if (p.error) throw p.error;
     const [checkinRows, moodRows, listRows, taskRows, eventRows, focusRows] = await Promise.all([
-      fetchPaged('checkins', 'habit_id,day,count,note', ['day', 'habit_id']),
-      fetchPaged('moods', 'day,mood', ['day']),
-      fetchPaged('lists', '*', ['id']),
-      fetchPaged('tasks', '*', ['id']),
+      fetchPaged('checkins', 'habit_id,day,count,note,minimal', ['day', 'habit_id']),
+      fetchPaged('moods', 'day,mood,journal,hard,planned,shutdown', ['day']),
+      fetchPaged('lists', '*', ['user_id', 'id']),
+      fetchPaged('tasks', '*', ['user_id', 'id']),
       fetchPaged('events', '*', ['id']),
       fetchPaged('focus_sessions', '*', ['id']),
     ]);
-    return { habitRows: h.data || [], checkinRows, moodRows, listRows, taskRows, eventRows, focusRows, profileRow: p.data };
+    // Compartilhamento é um extra: se falhar, o resto do app segue normal
+    const safe = async (fn) => {
+      try {
+        const r = await fn();
+        return r && !r.error ? r : {};
+      } catch (e) {
+        return {};
+      }
+    };
+    const [shares, partners, partnerHabits] = await Promise.all([
+      safe(() => client.from('list_shares').select('*')),
+      safe(() => client.from('habit_partners').select('*')),
+      safe(() => client.rpc('partner_habits')),
+    ]);
+    return {
+      habitRows: h.data || [],
+      checkinRows,
+      moodRows,
+      listRows,
+      taskRows,
+      eventRows,
+      focusRows,
+      profileRow: p.data,
+      shareRows: (shares && shares.data) || [],
+      partnerRows: (partners && partners.data) || [],
+      partnerHabits: (partnerHabits && partnerHabits.data) || [],
+    };
   }
 
   async function pull() {
@@ -435,7 +591,7 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     try {
       const s = await fetchAll();
       if (gen !== generation) return;
-      onSnapshot(buildSnapshot(s, pending), { serverHasLists: s.listRows.length > 0 });
+      onSnapshot(buildSnapshot(s, pending, userId), { serverHasLists: s.listRows.some((r) => r.user_id === userId) });
       if (!hasPending()) setStatus('synced');
       else scheduleFlush(0);
     } catch (e) {
@@ -449,10 +605,14 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     if (channel) client.removeChannel(channel);
     const filter = `user_id=eq.${userId}`;
     channel = client.channel(`ritmo-${userId}`);
-    for (const table of ['habits', 'checkins', 'moods', 'profiles', 'lists', 'tasks', 'events', 'focus_sessions']) {
+    for (const table of ['habits', 'checkins', 'moods', 'profiles', 'events', 'focus_sessions']) {
       for (const event of ['INSERT', 'UPDATE']) {
         channel.on('postgres_changes', { event, schema: 'public', table, filter }, () => schedulePull(700));
       }
+    }
+    // Listas e tarefas podem vir de quem compartilhou comigo: sem filtro (o RLS decide o que chega)
+    for (const table of ['lists', 'tasks', 'list_shares', 'habit_partners']) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => schedulePull(900));
     }
     channel.subscribe();
   }
@@ -482,7 +642,9 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     try {
       const s = await fetchAll();
       if (gen !== generation) return 'stale';
-      if (!s.habitRows.length && !s.profileRow && !s.taskRows.length && !s.listRows.length) {
+      const ownTasks = s.taskRows.filter((r) => r.user_id === uid);
+      const ownLists = s.listRows.filter((r) => r.user_id === uid);
+      if (!s.habitRows.length && !s.profileRow && !ownTasks.length && !ownLists.length) {
         const up = uploadRows(localData, uid);
         for (const t of TABLES) pending[t.name] = { ...(up[t.name] || {}), ...(pending[t.name] || {}) };
         pending.profile = profileRow(uid, localData);
@@ -490,7 +652,7 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
         result = 'uploaded';
         await flush();
       } else {
-        onSnapshot(buildSnapshot(s, pending), { replaced: true, serverHasLists: s.listRows.length > 0 });
+        onSnapshot(buildSnapshot(s, pending, uid), { replaced: true, serverHasLists: s.listRows.some((r) => r.user_id === uid) });
         if (hasPending()) scheduleFlush(0);
         else setStatus('synced');
       }
@@ -546,8 +708,8 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
       persist();
       scheduleFlush();
     },
-    queueCheckin: (habitId, day, count, note) => queue('checkins', `${habitId}|${day}`, checkinRow(userId, habitId, day, count, note)),
-    queueMood: (day, mood) => queue('moods', day, moodRow(userId, day, mood)),
+    queueCheckin: (habitId, day, count, note, minimal) => queue('checkins', `${habitId}|${day}`, checkinRow(userId, habitId, day, count, note, minimal)),
+    queueMood: (day, mood, info) => queue('moods', day, moodRow(userId, day, mood, info)),
     queueProfile: (p) => {
       if (!userId) return;
       pending.profile = profileRow(userId, p);
@@ -564,6 +726,48 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     },
     queueEvent: (e) => queue('events', e.id, toEventRow(e, userId)),
     queueFocus: (f) => queue('focus', f.id, toFocusRow(f, userId)),
+    /** Substitui tudo na conta por um backup: sobe o backup e marca como excluído o que não existe nele. */
+    async replaceAll(data, current) {
+      if (!userId) return;
+      const up = uploadRows(data, userId);
+      const gone = (list, fn) =>
+        Object.fromEntries(
+          (list || [])
+            .filter((x) => !x.ownerId && !up[fn].hasOwnProperty(x.id))
+            .map((x) => [x.id, { ...(fn === 'habits' ? toHabitRow(x, userId, 0) : fn === 'lists' ? toListRow(x, userId) : fn === 'tasks' ? toTaskRow(x, userId) : fn === 'events' ? toEventRow(x, userId) : toFocusRow(x, userId)), deleted: true }])
+        );
+      for (const name of ['habits', 'lists', 'tasks', 'events', 'focus']) {
+        pending[name] = { ...gone(current[name], name), ...up[name] };
+      }
+      pending.checkins = up.checkins;
+      pending.moods = up.moods;
+      pending.profile = profileRow(userId, { name: data.name, breaks: data.breaks, weeklyEmail: data.weeklyEmail, settings: data.settings });
+      persist();
+      await flush();
+    },
+    /** Backups na conta (um por dia, guarda os 14 mais recentes). */
+    async createBackup(data) {
+      if (!userId) return null;
+      const json = JSON.stringify(data);
+      const id = `b${Date.now().toString(36)}`;
+      const { error } = await client.from('backups').insert({ user_id: userId, id, size: json.length, data: JSON.parse(json) });
+      if (error) throw error;
+      const { data: rows } = await client.from('backups').select('id,created_at').order('created_at', { ascending: false });
+      const old = (rows || []).slice(14).map((r) => r.id);
+      if (old.length) await client.from('backups').delete().in('id', old);
+      return id;
+    },
+    async listBackups() {
+      if (!userId) return [];
+      const { data: rows, error } = await client.from('backups').select('id,created_at,size').order('created_at', { ascending: false });
+      if (error) throw error;
+      return rows || [];
+    },
+    async loadBackup(id) {
+      const { data: row, error } = await client.from('backups').select('data').eq('id', id).maybeSingle();
+      if (error) throw error;
+      return row ? row.data : null;
+    },
     /** Apaga o histórico (check-ins, humor, foco, tarefas e eventos) na conta. Precisa de conexão. */
     async resetHistory(habits, todayKey, profile) {
       if (!userId) return;

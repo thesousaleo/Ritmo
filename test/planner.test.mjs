@@ -22,7 +22,7 @@ test('entrada rápida: data, hora, prioridade, etiqueta, lista e repetição', (
   const r3 = parseQuickAdd('Academia toda segunda e quarta 7h', TODAY, lists);
   assert.deepEqual([r3.title, r3.date, r3.time, r3.repeat], ['Academia', '2026-11-02', '07:00', 'weekly:1,3']);
   const r4 = parseQuickAdd('Revisar código todo dia útil', TODAY, lists);
-  assert.deepEqual([r4.repeat, r4.date], ['weekdays', TODAY]);
+  assert.deepEqual([r4.repeat, r4.date], ['bizdays', TODAY]);
   assert.equal(parseQuickAdd('Comprar as 3 maçãs', TODAY, lists).title, 'Comprar as 3 maçãs');
   assert.equal(parseQuickAdd('Relatório 15/11 !alta', TODAY, lists).date, '2026-11-15');
   assert.ok(r.tokens.every((t, i, a) => i === 0 || a[i - 1].end <= t.start), 'tokens sem sobreposição');
