@@ -197,24 +197,36 @@ try {
   await page.waitForSelector('.ring');
   await shot(page, '12-celular-habitos');
   // Diagnóstico: o que desenha um retângulo em volta do anel?
-  const ringDiag = await page.evaluate(() => {
-    const r = document.querySelector('.hsum .ring').getBoundingClientRect();
-    const at = (x, y) => {
-      const el = document.elementFromPoint(x, y);
-      if (!el) return null;
-      const cs = getComputedStyle(el);
-      return { tag: el.tagName, cls: String(el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className).slice(0, 60), outline: cs.outlineStyle + ' ' + cs.outlineWidth, border: cs.borderTopWidth, shadow: cs.boxShadow.slice(0, 60), bg: cs.backgroundColor };
+  {
+    const box = await page.locator('.hsum .ring').boundingBox();
+    const px = async () => {
+      const buf = await page.screenshot({ clip: { x: box.x - 2, y: box.y + box.height / 2, width: 1, height: 1 } });
+      return buf.toString('base64').slice(-40);
     };
-    const ae = document.activeElement;
-    return {
-      edge: at(r.left + 1, r.top + r.height / 2),
-      center: at(r.left + r.width / 2, r.top + r.height / 2),
-      active: ae ? `${ae.tagName}.${ae.className}`.slice(0, 80) : null,
-      selection: String(window.getSelection()).slice(0, 40),
-      ringOutline: getComputedStyle(document.querySelector('.hsum .ring')).outline,
-    };
-  });
-  checks.push({ name: 'diagnóstico do anel', ok: true, detail: JSON.stringify(ringDiag) });
+    const base = await px();
+    const tries = {};
+    for (const [label, css] of [
+      ['svg', '.hsum .ring-svg{display:none!important}'],
+      ['center', '.hsum .ring-center{display:none!important}'],
+      ['ring', '.hsum .ring{visibility:hidden!important}'],
+      ['allanim', '*{animation:none!important;transition:none!important}'],
+    ]) {
+      const h = await page.addStyleTag({ content: css });
+      await page.waitForTimeout(150);
+      tries[label] = (await px()) === base ? 'igual' : 'mudou';
+      await h.evaluate((n) => n.remove());
+      await page.waitForTimeout(150);
+    }
+    const near = await page.evaluate((b) => {
+      const out = [];
+      for (const el of document.querySelectorAll('*')) {
+        const r = el.getBoundingClientRect();
+        if (Math.abs(r.width - b.width) < 12 && Math.abs(r.x - b.x) < 8 && Math.abs(r.height - b.height) < 12) out.push(`${el.tagName}.${String(el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className)} ${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)} tab=${el.tabIndex}`);
+      }
+      return out;
+    }, box);
+    checks.push({ name: 'diagnóstico do anel', ok: true, detail: JSON.stringify({ tries, near, box }) });
+  }
   await page.click('button[aria-label="Mais opções de hábitos"]');
   await page.click('.menu-item:has-text("Dia difícil")');
   await page.waitForTimeout(300);
