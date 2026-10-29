@@ -4,16 +4,15 @@ import { App as NativeApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
 import { EASE_OUT, useMediaQuery, Sheet, Icon, hasOpenLayer } from './components/ui.jsx';
-import { TodayView, AccountButton } from './components/Today.jsx';
+import { TodayView } from './components/Today.jsx';
 import { StatsView } from './components/Stats.jsx';
 import { HabitSheet } from './components/HabitSheet.jsx';
 import { HabitDetail } from './components/HabitDetail.jsx';
 import { TimerSheet } from './components/TimerSheet.jsx';
 import { ManageSheet } from './components/ManageSheet.jsx';
-import { AccountSheet } from './components/AccountSheet.jsx';
 import { Toast, Celebration } from './components/Overlays.jsx';
 import { Rail, ListsPanel, ListsDrawer, TabBar, Fab, visibleModules } from './components/Nav.jsx';
-import { SettingsSheet } from './components/SettingsSheet.jsx';
+import { SettingsPage, SettingsButton } from './components/SettingsPage.jsx';
 import { RitualSheet, WhatNowSheet, TemplateSheet, FilterSheet } from './components/Planner.jsx';
 import { LockScreen } from './components/LockScreen.jsx';
 import { useAppearance } from './lib/appearance.js';
@@ -89,9 +88,11 @@ export default function App() {
   const [habitSheet, setHabitSheet] = useState(null);
   const [habitDetail, setHabitDetail] = useState(null);
   const [manageOpen, setManageOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
   const [timerOpen, setTimerOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Ajustes é uma página inteira: null = fechada, ou a aba aberta
+  const [settingsTab, setSettingsTab] = useState(null);
+  const settingsOpen = !!settingsTab;
+  const openSettings = useCallback((tab = 'account') => setSettingsTab(tab), []);
   const [ritual, setRitual] = useState(null); // 'plan' | 'shutdown' | 'review'
   const [whatNowOpen, setWhatNowOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -120,7 +121,7 @@ export default function App() {
     if (view.startsWith('filter:') && !viewMeta(view, data).filter) setView('today');
   }, [view, data]);
   useEffect(() => {
-    if (store.recovery) setAccountOpen(true);
+    if (store.recovery) setSettingsTab('account');
   }, [store.recovery]);
   // Dia selecionado nos hábitos acompanha a virada do dia
   const prevToday = useRef(todayKey);
@@ -137,13 +138,19 @@ export default function App() {
   }, [taskId, task]);
 
   const ui = {
-    taskId, drawer, quickAdd, listSheet, eventSheet, create, search, habitSheet, habitDetail, manageOpen, accountOpen, timerOpen, module,
+    taskId, drawer, quickAdd, listSheet, eventSheet, create, search, habitSheet, habitDetail, manageOpen, timerOpen, module,
     celebration: store.celebration, settingsOpen, ritual, whatNowOpen, templatesOpen, filterSheet, modules,
   };
   const uiRef = useRef(ui);
   uiRef.current = ui;
 
   const goModule = useCallback((m) => {
+    if (uiRef.current.settingsOpen) {
+      setSettingsTab(null);
+      setModule(m);
+      scrollRef.current && scrollRef.current.scrollTo({ top: 0 });
+      return;
+    }
     if (m === uiRef.current.module) {
       scrollRef.current && scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -196,7 +203,7 @@ export default function App() {
         setSearch(true);
       } else if (e.key === ',') {
         e.preventDefault();
-        setSettingsOpen(true);
+        setSettingsTab((t) => t || 'account');
       } else {
         const m = visibleModules(uiRef.current.modules).find((x) => x.key === e.key);
         if (m) goModule(m.id);
@@ -217,7 +224,7 @@ export default function App() {
       else if (s.templatesOpen) setTemplatesOpen(false);
       else if (s.whatNowOpen) setWhatNowOpen(false);
       else if (s.ritual) setRitual(null);
-      else if (s.settingsOpen) setSettingsOpen(false);
+      else if (s.settingsOpen) setSettingsTab(null);
       else if (s.timerOpen) setTimerOpen(false);
       else if (s.create) setCreate(null);
       else if (s.eventSheet) setEventSheet(null);
@@ -227,7 +234,6 @@ export default function App() {
       else if (s.habitDetail) setHabitDetail(null);
       else if (s.taskId) setTaskId(null);
       else if (s.manageOpen) setManageOpen(false);
-      else if (s.accountOpen) setAccountOpen(false);
       else if (s.drawer) setDrawer(false);
       else if (s.module !== s.modules[0]) setModule(s.modules[0]);
       else NativeApp.minimizeApp();
@@ -245,7 +251,7 @@ export default function App() {
     StatusBar.setBackgroundColor({ color: resolvedTheme === 'black' ? '#000000' : dark ? '#0F1412' : '#ECEFE9' }).catch(() => {});
   }, [resolvedTheme]);
 
-  const accountButton = !desktop && <AccountButton name={data.name} status={store.syncStatus} onClick={() => setAccountOpen(true)} />;
+  const accountButton = !desktop && <SettingsButton status={store.syncStatus} onClick={() => openSettings()} />;
   const searchButton = !desktop && (
     <button type="button" className="icon-btn ghost" onClick={() => setSearch(true)} aria-label="Buscar">
       <Icon name="Search" size={19} />
@@ -267,18 +273,29 @@ export default function App() {
     return undefined;
   }, [focusRunning, focusPhase, store.device.ambient]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => stopAmbient(), []);
-  const panelMode = desktop && wide && module === 'tasks';
+  const panelMode = desktop && wide && module === 'tasks' && !settingsOpen;
   const anyOverlay = !!(
-    quickAdd || listSheet || eventSheet || create || habitSheet || habitDetail || manageOpen || accountOpen || timerOpen || (task && !panelMode) ||
-    settingsOpen || ritual || whatNowOpen || templatesOpen || filterSheet
+    quickAdd || listSheet || eventSheet || create || habitSheet || habitDetail || manageOpen || timerOpen || (task && !panelMode) ||
+    ritual || whatNowOpen || templatesOpen || filterSheet
   );
   const detailHabit = habitDetail && data.habits.find((h) => h.id === habitDetail.habitId);
   const timer = store.habits.timer;
   const timerHabit = timer && data.habits.find((h) => h.id === timer.habitId);
-  const showFab = !desktop && module !== 'focus' && module !== 'stats';
+  const showFab = !desktop && !settingsOpen && module !== 'focus' && module !== 'stats';
 
   let content;
-  if (module === 'tasks')
+  if (settingsOpen)
+    content = (
+      <SettingsPage
+        desktop={desktop}
+        store={store}
+        todayKey={todayKey}
+        initial={settingsTab}
+        onBack={desktop ? null : () => setSettingsTab(null)}
+        onSignedOut={() => setSettingsTab('account')}
+      />
+    );
+  else if (module === 'tasks')
     content = (
       <TasksView
         store={store}
@@ -364,14 +381,14 @@ export default function App() {
             modules={modules}
             onModule={goModule}
             onSearch={() => setSearch(true)}
-            onSettings={() => setSettingsOpen(true)}
-            onAccount={() => setAccountOpen(true)}
+            onSettings={() => (settingsOpen ? setSettingsTab(null) : openSettings())}
+            settingsOpen={settingsOpen}
             name={data.name}
             status={store.syncStatus}
             focusRunning={focusRunning}
           />
         )}
-        {desktop && module === 'tasks' && (
+        {desktop && module === 'tasks' && !settingsOpen && (
           <aside className="lists-col" aria-label="Listas">
             <div className="lists-col-head">
               <span>Tarefas</span>
@@ -392,7 +409,7 @@ export default function App() {
         )}
 
         <main ref={scrollRef} className={`scroll${anyOverlay && !desktop ? ' is-locked' : ''}`}>
-          <motion.div key={module} className={`page is-${module}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16, ease: EASE_OUT }}>
+          <motion.div key={settingsOpen ? 'settings' : module} className={`page is-${settingsOpen ? 'settings' : module}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16, ease: EASE_OUT }}>
             {content}
           </motion.div>
         </main>
@@ -403,7 +420,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {!desktop && <TabBar module={module} modules={modules} onModule={goModule} focusRunning={focusRunning} />}
+        {!desktop && <TabBar module={settingsOpen ? null : module} modules={modules} onModule={goModule} focusRunning={focusRunning} />}
         {showFab && <Fab onClick={newItem} label={module === 'habits' ? 'Novo hábito' : module === 'calendar' ? 'Adicionar na agenda' : 'Nova tarefa'} />}
 
         {!desktop && (
@@ -598,41 +615,6 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <AnimatePresence>
-          {accountOpen && (
-            <AccountSheet
-              key="account"
-              desktop={desktop}
-              user={store.user}
-              recovery={store.recovery}
-              name={data.name}
-              status={store.syncStatus}
-              hasPending={store.account.hasPending()}
-              weeklyEmail={!!data.weeklyEmail}
-              onClose={() => setAccountOpen(false)}
-              onRename={store.account.rename}
-              onLocalName={store.account.setLocalName}
-              onSyncNow={store.account.syncNow}
-              onSignOut={async () => {
-                await store.account.signOut();
-                setAccountOpen(false);
-              }}
-              onRecoveryDone={() => {
-                store.account.clearRecovery();
-                setAccountOpen(false);
-              }}
-              onExport={store.account.exportCsv}
-              onWeeklyEmail={store.account.setWeeklyEmail}
-              onTestEmail={store.account.testEmail}
-              onSettings={() => {
-                setAccountOpen(false);
-                setSettingsOpen(true);
-              }}
-            />
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>{settingsOpen && <SettingsSheet key="settings" desktop={desktop} store={store} todayKey={todayKey} onClose={() => setSettingsOpen(false)} />}</AnimatePresence>
         <AnimatePresence>
           {ritual && <RitualSheet key={`ritual-${ritual}`} mode={ritual} desktop={desktop} store={store} todayKey={todayKey} onClose={() => setRitual(null)} onOpenTask={(id) => setTaskId(id)} />}
         </AnimatePresence>

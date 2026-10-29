@@ -38,7 +38,8 @@ export const visibleModules = (ids) =>
     .map((m, i) => ({ ...m, key: String(i + 1) }));
 
 /** Barra fina de módulos (desktop). */
-export function Rail({ module, modules, onModule, onSearch, onSettings, onAccount, name, status, focusRunning }) {
+export function Rail({ module, modules, onModule, onSearch, onSettings, settingsOpen, status, focusRunning }) {
+  const active = settingsOpen ? null : module;
   return (
     <nav className="rail" aria-label="Módulos">
       <div className="rail-brand" title="Ritmo">
@@ -46,10 +47,10 @@ export function Rail({ module, modules, onModule, onSearch, onSettings, onAccoun
       </div>
       <div className="rail-items">
         {visibleModules(modules).map((m) => (
-          <button key={m.id} type="button" className={`rail-item${module === m.id ? ' is-on' : ''}`} onClick={() => onModule(m.id)} aria-current={module === m.id ? 'page' : undefined} title={`${m.label} (${m.key})`}>
-            {module === m.id && <motion.span layoutId="rail-pill" className="rail-pill" transition={SPRING.indicator} />}
+          <button key={m.id} type="button" className={`rail-item${active === m.id ? ' is-on' : ''}`} onClick={() => onModule(m.id)} aria-current={active === m.id ? 'page' : undefined} title={`${m.label} (${m.key})`}>
+            {active === m.id && <motion.span layoutId="rail-pill" className="rail-pill" transition={SPRING.indicator} />}
             <span className="rail-icon">
-              <Icon name={m.icon} size={21} strokeWidth={module === m.id ? 2.3 : 1.9} />
+              <Icon name={m.icon} size={21} strokeWidth={active === m.id ? 2.3 : 1.9} />
               {m.id === 'focus' && focusRunning && <span className="run-dot" aria-label="Foco em andamento" />}
             </span>
             <span className="rail-label">{m.short || m.label}</span>
@@ -57,21 +58,25 @@ export function Rail({ module, modules, onModule, onSearch, onSettings, onAccoun
         ))}
       </div>
       <div className="rail-bottom">
-        <button type="button" className="rail-item" onClick={onSettings} title="Ajustes (,)">
-          <span className="rail-icon">
-            <Icon name="Settings2" size={20} />
-          </span>
-          <span className="rail-label">Ajustes</span>
-        </button>
         <button type="button" className="rail-item" onClick={onSearch} title="Buscar (/)">
           <span className="rail-icon">
             <Icon name="Search" size={20} />
           </span>
           <span className="rail-label">Buscar</span>
         </button>
-        <button type="button" className="avatar sm rail-avatar" onClick={onAccount} aria-label={`Conta: ${statusText(status)}`} title={statusText(status)}>
-          {(name || '').trim().charAt(0).toUpperCase() || <Icon name="User" size={16} />}
-          <span className={`sync-dot is-${status}`} aria-hidden="true" />
+        <button
+          type="button"
+          className={`rail-item${settingsOpen ? ' is-on' : ''}`}
+          onClick={onSettings}
+          title={`Ajustes e conta (,) · ${statusText(status)}`}
+          aria-current={settingsOpen ? 'page' : undefined}
+        >
+          {settingsOpen && <motion.span layoutId="rail-pill" className="rail-pill" transition={SPRING.indicator} />}
+          <span className="rail-icon">
+            <Icon name="Settings" size={20} strokeWidth={settingsOpen ? 2.3 : 1.9} />
+            <span className={`sync-dot is-${status}`} aria-hidden="true" />
+          </span>
+          <span className="rail-label">Ajustes</span>
         </button>
       </div>
     </nav>

@@ -222,6 +222,18 @@ try {
   await page.waitForTimeout(300);
   await shot(page, '45-celular-insights');
 
+  // Ajustes pela engrenagem do topo (página inteira, com a aba Conta)
+  step = 'Ajustes no celular';
+  await page.click('button[aria-label^="Ajustes e conta"]');
+  await page.waitForSelector('.settings-page');
+  ok('engrenagem abre a página de Ajustes com Conta', (await page.locator('.set-tab.is-on:has-text("Conta")').count()) === 1 && (await page.locator('.settings-page input[type="email"]').count()) > 0);
+  await shot(page, '53-celular-ajustes-conta');
+  await page.click('.set-tab:has-text("Aparência")');
+  await page.waitForTimeout(300);
+  await shot(page, '54-celular-ajustes-aparencia');
+  await page.click('button[aria-label="Voltar"]');
+  await page.waitForTimeout(300);
+
   // Escuro
   step = 'Escuro';
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -342,20 +354,18 @@ try {
   // Ajustes: tema preto
   step = 'Ajustes: tema preto';
   await page.keyboard.press(',');
-  await page.waitForSelector('.settings');
+  await page.waitForSelector('.settings-page');
+  ok('Ajustes abre como página, na aba Conta', (await page.locator('.set-tab.is-on:has-text("Conta")').count()) === 1 && (await page.locator('.sheet').count()) === 0);
   await shot(page, '46-desk-ajustes');
-  await page.click('.set-row:has-text("Aparência")');
+  await page.click('.set-tab:has-text("Aparência")');
   await page.click('button[role="radio"]:has-text("Preto")');
   await page.waitForTimeout(300);
   ok('ajuste de tema aplica o preto', (await page.evaluate(() => document.documentElement.dataset.theme)) === 'black');
   await shot(page, '47-desk-ajustes-preto');
   await page.click('button[role="radio"]:has-text("Auto")');
-  await page.click('button[aria-label="Voltar para Ajustes"]');
-  await page.click('.set-row:has-text("Data, hora e feriados")');
+  await page.click('.set-tab:has-text("Data e feriados")');
   await page.waitForTimeout(300);
   await shot(page, '48-desk-ajustes-feriados');
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(300);
 
   // Modelos
   step = 'Modelos';

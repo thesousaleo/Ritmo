@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Icon, Segmented, Sheet, swapProps } from './ui.jsx';
+import { Icon, Segmented, swapProps } from './ui.jsx';
 import { statusText } from './Today.jsx';
 import { supabase, authMessage, SITE_URL } from '../lib/supabase.js';
 
@@ -287,13 +287,13 @@ function ExportButton({ onExport }) {
   );
 }
 
-export function AccountSheet({
-  desktop, user, recovery, name, status, hasPending, weeklyEmail,
-  onClose, onRename, onLocalName, onSyncNow, onSignOut, onRecoveryDone, onExport, onWeeklyEmail, onTestEmail, onSettings,
+/** Conta e sincronização (aba "Conta" dos Ajustes). */
+export function AccountPanel({
+  user, recovery, name, status, hasPending, weeklyEmail,
+  onRename, onLocalName, onSyncNow, onSignOut, onRecoveryDone, onExport, onWeeklyEmail, onTestEmail,
 }) {
-  const title = recovery ? 'Nova senha' : user ? 'Sua conta' : 'Sincronizar aparelhos';
   return (
-    <Sheet desktop={desktop} title={title} onClose={onClose} labelId="account-title">
+    <div className="flex flex-col gap-6">
       {recovery ? (
         <NewPassword onDone={onRecoveryDone} />
       ) : user ? (
@@ -313,14 +313,6 @@ export function AccountSheet({
         <SignedOut localName={name} onLocalName={onLocalName} />
       )}
       {!recovery && <ExportButton onExport={onExport} />}
-      {!recovery && onSettings && (
-        <button type="button" className="settings-link" onClick={onSettings}>
-          <Icon name="Settings2" size={18} />
-          <span className="flex-1 text-left">Ajustes</span>
-          <span className="field-hint">Tema, módulos, feriados, backups</span>
-          <Icon name="ChevronRight" size={16} />
-        </button>
-      )}
-    </Sheet>
+    </div>
   );
 }

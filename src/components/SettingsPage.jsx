@@ -1,7 +1,7 @@
-/* Ajustes: uma lista curta de categorias; cada uma abre na mesma folha (com voltar), para não virar um painel lotado. */
+/* Ajustes: tudo num só lugar, em abas (Conta e sincronização, aparência, navegação, datas, planejamento, lugares, aparelho, lembretes, backups). */
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sheet, Icon, Segmented, EASE_OUT } from './ui.jsx';
+import { Icon, Segmented, EASE_OUT } from './ui.jsx';
 import { COLORS, shortDate } from '../lib/habits.js';
 import { UF_NAMES, holidaysOf } from '../lib/holidays.js';
 import { ALL_MODULES, isHex } from '../lib/settings.js';
@@ -12,6 +12,8 @@ import {
   openBatterySettings, openExactAlarmSettings, openNotificationSettings, currentPosition, geofenceSupported,
 } from '../lib/ritmoNative.js';
 import { newId } from '../lib/tasks.js';
+import { AccountPanel } from './AccountSheet.jsx';
+import { statusText } from './Today.jsx';
 
 export function Switch({ on, onChange, label }) {
   return (
@@ -46,12 +48,13 @@ const Group = ({ title, children, foot }) => (
 );
 
 const CATEGORIES = [
+  { id: 'account', label: 'Conta', icon: 'CircleUser', hint: 'Sincronização, login e resumo por e-mail' },
   { id: 'look', label: 'Aparência', icon: 'Palette', hint: 'Tema, cor, densidade e texto' },
   { id: 'nav', label: 'Navegação', icon: 'LayoutGrid', hint: 'Módulos, ordem e tela inicial' },
-  { id: 'time', label: 'Data, hora e feriados', icon: 'CalendarDays', hint: 'Semana, relógio, estado e folgas' },
+  { id: 'time', label: 'Data e feriados', icon: 'CalendarDays', hint: 'Semana, relógio, estado e folgas' },
   { id: 'plan', label: 'Planejamento', icon: 'Sunrise', hint: 'Expediente, capacidade e rituais' },
   { id: 'places', label: 'Lugares', icon: 'MapPin', hint: 'Lembretes ao chegar em casa ou no trabalho' },
-  { id: 'device', label: 'Este aparelho', icon: 'Smartphone', hint: 'Sons, vibração, bloqueio e ícone' },
+  { id: 'device', label: 'Aparelho', icon: 'Smartphone', hint: 'Sons, vibração, bloqueio e ícone' },
   { id: 'reminders', label: 'Lembretes', icon: 'BellRing', hint: 'Diagnóstico e permissões' },
   { id: 'backup', label: 'Backups', icon: 'ArchiveRestore', hint: 'Cópias automáticas e restauração' },
 ];
@@ -580,55 +583,115 @@ function Backups({ store }) {
   );
 }
 
-export function SettingsSheet({ desktop, store, todayKey, onClose, initial = null }) {
-  const [page, setPage] = useState(initial);
+/** Página de Ajustes (tela inteira): abas à esquerda no computador, faixa de abas fixa no topo no celular. */
+export function SettingsPage({ desktop, store, todayKey, onBack, initial = 'account', onSignedOut, headerRight }) {
+  const [page, setPage] = useState(initial || 'account');
+  const tabsRef = useRef(null);
   const s = store.settings;
   const set = store.updateSettings;
-  const cat = CATEGORIES.find((c) => c.id === page);
+  const data = store.data;
+  const cat = CATEGORIES.find((c) => c.id === page) || CATEGORIES[0];
 
-  const header = (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-1 min-w-0">
-        {cat && (
-          <button type="button" className="icon-btn ghost lead" onClick={() => setPage(null)} aria-label="Voltar para Ajustes">
-            <Icon name="ChevronLeft" size={20} />
-          </button>
-        )}
-        <h2 id="settings-title" className="sheet-title truncate">
-          {cat ? cat.label : 'Ajustes'}
-        </h2>
-      </div>
-      <button type="button" className="icon-btn" onClick={onClose} aria-label="Fechar">
-        <Icon name="X" size={18} />
-      </button>
+  useEffect(() => {
+    if (initial) setPage(initial);
+  }, [initial]);
+
+  // Aba ativa sempre visível na faixa de abas (celular)
+  useEffect(() => {
+    const box = tabsRef.current;
+    const el = box && box.querySelector('[aria-selected="true"]');
+    if (!desktop && el && box.scrollTo) box.scrollTo({ left: el.offsetLeft - box.clientWidth / 2 + el.clientWidth / 2, behavior: 'smooth' });
+  }, [page, desktop]);
+
+  const tabs = (
+    <div ref={tabsRef} className={`set-tabs${desktop ? ' is-side' : ''}`} role="tablist" aria-label="Seções dos ajustes">
+      {CATEGORIES.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          role="tab"
+          aria-selected={page === c.id}
+          className={`set-tab${page === c.id ? ' is-on' : ''}`}
+          onClick={() => setPage(c.id)}
+        >
+          <Icon name={c.icon} size={desktop ? 18 : 16} />
+          <span className="set-tab-label">{c.label}</span>
+          {c.id === 'account' && <span className={`sync-dot is-${store.syncStatus} inline`} aria-label={statusText(store.syncStatus)} />}
+        </button>
+      ))}
     </div>
   );
 
   return (
-    <Sheet desktop={desktop} onClose={onClose} labelId="settings-title" header={header} className="settings-sheet">
-      <motion.div
-        key={page || 'root'}
-        className="settings"
-        initial={{ opacity: 0, x: page ? 12 : -12 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.16, ease: EASE_OUT }}
-      >
-        {!page && (
-          <Group>
-            {CATEGORIES.map((c) => (
-              <Row key={c.id} icon={c.icon} label={c.label} hint={c.hint} onClick={() => setPage(c.id)} />
-            ))}
-          </Group>
-        )}
-        {page === 'look' && <Look s={s} set={set} />}
-        {page === 'nav' && <Nav s={s} set={set} />}
-        {page === 'time' && <Time s={s} set={set} todayKey={todayKey} />}
-        {page === 'plan' && <Plan s={s} set={set} />}
-        {page === 'places' && <Places s={s} set={set} />}
-        {page === 'device' && <Device device={store.device} setDevice={store.setDevice} />}
-        {page === 'reminders' && <Reminders data={store.data} />}
-        {page === 'backup' && <Backups store={store} />}
-      </motion.div>
-    </Sheet>
+    <div className="settings-page">
+      <header className="page-header">
+        <div className="flex items-center gap-1 min-w-0">
+          {onBack && (
+            <button type="button" className="icon-btn ghost lead" onClick={onBack} aria-label="Voltar">
+              <Icon name="ChevronLeft" size={22} />
+            </button>
+          )}
+          <h1 className="greet">Ajustes</h1>
+        </div>
+        <div className="flex items-center gap-2 flex-none">{headerRight}</div>
+      </header>
+      <div className="set-layout">
+        {desktop ? <nav className="set-side">{tabs}</nav> : <div className="set-tabs-wrap">{tabs}</div>}
+        <motion.section
+          key={page}
+          className="settings set-main"
+          aria-label={cat.label}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.16, ease: EASE_OUT }}
+        >
+          {desktop && (
+            <div className="set-main-head">
+              <h2>{cat.label}</h2>
+              <p className="set-hint">{cat.hint}</p>
+            </div>
+          )}
+          {page === 'account' && (
+            <AccountPanel
+              user={store.user}
+              recovery={store.recovery}
+              name={data.name}
+              status={store.syncStatus}
+              hasPending={store.account.hasPending()}
+              weeklyEmail={!!data.weeklyEmail}
+              onRename={store.account.rename}
+              onLocalName={store.account.setLocalName}
+              onSyncNow={store.account.syncNow}
+              onSignOut={async () => {
+                await store.account.signOut();
+                if (onSignedOut) onSignedOut();
+              }}
+              onRecoveryDone={() => store.account.clearRecovery()}
+              onExport={store.account.exportCsv}
+              onWeeklyEmail={store.account.setWeeklyEmail}
+              onTestEmail={store.account.testEmail}
+            />
+          )}
+          {page === 'look' && <Look s={s} set={set} />}
+          {page === 'nav' && <Nav s={s} set={set} />}
+          {page === 'time' && <Time s={s} set={set} todayKey={todayKey} />}
+          {page === 'plan' && <Plan s={s} set={set} />}
+          {page === 'places' && <Places s={s} set={set} />}
+          {page === 'device' && <Device device={store.device} setDevice={store.setDevice} />}
+          {page === 'reminders' && <Reminders data={data} />}
+          {page === 'backup' && <Backups store={store} />}
+        </motion.section>
+      </div>
+    </div>
+  );
+}
+
+/** Botão de engrenagem do topo (celular), com o ponto do estado da sincronização. */
+export function SettingsButton({ status, onClick }) {
+  return (
+    <button type="button" className="icon-btn ghost settings-btn" onClick={onClick} aria-label={`Ajustes e conta: ${statusText(status)}`}>
+      <Icon name="Settings" size={20} />
+      <span className={`sync-dot is-${status}`} aria-hidden="true" />
+    </button>
   );
 }
