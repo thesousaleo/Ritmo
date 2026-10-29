@@ -10,7 +10,9 @@ import { keyOf, fromKey, addDays, activeHabits, isListed, countOf } from './habi
 import { sortTasks } from './tasks.js';
 import { snoozeTask } from './native.js';
 
-export function useNativeBridges(store, todayKey) {
+export function useNativeBridges(store, todayKey, handlers = {}) {
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
   const { data, settings, device } = store;
   const [locked, setLocked] = useState(() => isNativeAndroid && !!device.lock);
   const busy = useRef(false);
@@ -99,6 +101,19 @@ export function useNativeBridges(store, todayKey) {
     const h = LocalNotifications.addListener('localNotificationActionPerformed', (ev) => {
       const extra = (ev.notification && ev.notification.extra) || {};
       const s = storeRef.current;
+      // Tocar no corpo da notificação abre o item correspondente no app
+      if (ev.actionId === 'tap') {
+        const go = handlersRef.current;
+        if (extra.taskId && go.onOpenTask && s.data.tasks.some((x) => x.id === extra.taskId)) go.onOpenTask(extra.taskId);
+        else if (extra.eventId && go.onOpenEvent) {
+          const e = s.data.events.find((x) => x.id === extra.eventId);
+          if (e) go.onOpenEvent(e);
+        } else if (extra.habitId && go.onOpenHabit) {
+          const hb = s.data.habits.find((x) => x.id === extra.habitId);
+          if (hb) go.onOpenHabit(hb);
+        }
+        return;
+      }
       if (extra.habitId && ev.actionId === 'habitDone') {
         const hb = s.data.habits.find((x) => x.id === extra.habitId);
         const day = keyOf(new Date());

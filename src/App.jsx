@@ -102,7 +102,23 @@ export default function App() {
   const settingsBackRef = useRef(null);
   const modules = store.settings.modules;
   const resolvedTheme = useAppearance(store.settings);
-  const locked = useNativeBridges(store, todayKey);
+  // Tocar numa notificação abre a tarefa, o evento ou o hábito
+  const locked = useNativeBridges(store, todayKey, {
+    onOpenTask: (id) => {
+      setSettingsTab(null);
+      setModule('tasks');
+      setTaskId(id);
+    },
+    onOpenEvent: (ev) => {
+      setSettingsTab(null);
+      setEventSheet(ev);
+    },
+    onOpenHabit: (h) => {
+      setSettingsTab(null);
+      setModule('habits');
+      setHabitDetail({ habitId: h.id, dayKey: keyOf(todayDate()) });
+    },
+  });
 
   // Módulo desligado nos Ajustes: volta para o primeiro visível
   useEffect(() => {
