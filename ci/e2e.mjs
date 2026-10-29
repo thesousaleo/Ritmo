@@ -103,6 +103,23 @@ try {
   ok('concluir na lista grava done', (d3.tasks || []).some((t) => t.title === firstTitle.trim() && t.done), firstTitle);
   await shot(page, '06-celular-hoje-concluida');
 
+  // Lista no celular: título não pode ficar sob os controles de exibição
+  await page.click('button[aria-label="Listas"]');
+  await page.click('.drawer .lp-item:has-text("Trabalho")');
+  await page.waitForSelector('.list-bar');
+  await page.waitForTimeout(400);
+  const tBox = await page.locator('.tasks-title-text').boundingBox();
+  const cBox = await page.locator('.list-controls').boundingBox();
+  const hBox = await page.locator('.page-header > .flex-none').boundingBox();
+  const overlap = (a, b) => a && b && a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  ok('título da lista não fica sob os controles (celular)', tBox && cBox && !overlap(tBox, cBox) && !overlap(tBox, hBox), JSON.stringify({ tBox, cBox, hBox }));
+  ok('título da lista aparece inteiro (celular)', await page.evaluate(() => { const el = document.querySelector('.tasks-title-text'); return el && el.scrollWidth <= el.clientWidth + 1; }));
+  await shot(page, '16-celular-lista');
+  await page.click('.list-controls button[aria-label="Kanban"]');
+  await page.waitForSelector('.kanban');
+  await shot(page, '17-celular-kanban');
+  await page.click('.list-controls button[aria-label="Lista"]');
+
   // Agenda
   await page.click('nav.tabbar button:has-text("Agenda")');
   await page.waitForSelector('.cal');

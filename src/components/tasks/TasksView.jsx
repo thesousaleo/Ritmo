@@ -121,6 +121,27 @@ export function TasksView({ store, view, todayKey, desktop, selectedId, onOpen, 
         ? `${pendingCount} ${pendingCount === 1 ? 'tarefa' : 'tarefas'}`
         : '';
 
+  // Lista/Kanban e menu da lista: no cabeçalho no computador; numa linha própria no celular,
+  // para o título da lista ficar com a largura toda.
+  const listControls = list && (
+    <div className="list-controls">
+      <Segmented
+        id={`view-${list.id}`}
+        label="Modo de exibição"
+        value={list.view || 'list'}
+        onChange={(v) => store.lists.update(list.id, { view: v })}
+        options={[
+          { id: 'list', label: <Icon name="List" size={16} />, ariaLabel: 'Lista' },
+          { id: 'kanban', label: <Icon name="Kanban" size={16} />, ariaLabel: 'Kanban' },
+        ]}
+      />
+      <button type="button" className="icon-btn ghost" onClick={(e) => listMenu.open(e)} aria-label="Opções da lista">
+        <Icon name="Ellipsis" size={18} />
+      </button>
+    </div>
+  );
+  const splitBar = !desktop && !!list;
+
   return (
     <div className={`tasks${kanban ? ' is-kanban' : ''}`}>
       <PageHeader
@@ -132,30 +153,21 @@ export function TasksView({ store, view, todayKey, desktop, selectedId, onOpen, 
               </button>
             )}
             {list && <i className="title-dot" style={{ background: colorOf(list.color).value }} />}
-            {title}
+            <span className="tasks-title-text">{title}</span>
           </span>
         }
-        subtitle={subtitle}
+        subtitle={splitBar ? undefined : subtitle}
       >
-        {list && (
-          <>
-            <Segmented
-              id={`view-${list.id}`}
-              label="Modo de exibição"
-              value={list.view || 'list'}
-              onChange={(v) => store.lists.update(list.id, { view: v })}
-              options={[
-                { id: 'list', label: <Icon name="List" size={16} />, ariaLabel: 'Lista' },
-                { id: 'kanban', label: <Icon name="Kanban" size={16} />, ariaLabel: 'Kanban' },
-              ]}
-            />
-            <button type="button" className="icon-btn ghost" onClick={(e) => listMenu.open(e)} aria-label="Opções da lista">
-              <Icon name="Ellipsis" size={18} />
-            </button>
-          </>
-        )}
+        {!splitBar && listControls}
         {headerRight}
       </PageHeader>
+
+      {splitBar && (
+        <div className="list-bar">
+          <span className="date-line">{subtitle}</span>
+          {listControls}
+        </div>
+      )}
 
       {desktop && view !== 'done' && (
         <QuickAdd data={data} view={view} todayKey={todayKey} desktop onAdd={(fields) => store.tasks.add(fields)} />

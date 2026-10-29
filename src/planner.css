@@ -68,9 +68,15 @@
 /* ---------- tarefas ---------- */
 .tasks { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 .tasks.is-kanban { gap: 16px; }
-.tasks-title { display: inline-flex; align-items: center; gap: 10px; }
-.tasks .page-header .seg { grid-auto-flow: column; }
-.tasks .page-header .seg button { width: 38px; height: 32px; }
+.tasks .page-header > .min-w-0 { flex: 1; }
+.tasks-title { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; }
+.tasks-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tasks-title .title-dot, .tasks-title .lead { flex: none; }
+.list-controls { display: flex; align-items: center; gap: 4px; flex: none; }
+.list-controls .seg { grid-auto-flow: column; }
+.list-controls .seg button { width: 38px; height: 32px; }
+.list-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: -14px; }
+.list-bar .date-line { margin-top: 0; }
 
 .qa { display: flex; flex-direction: column; gap: 8px; }
 .qa-row { display: flex; align-items: center; gap: 8px; min-height: 50px; padding: 4px 6px 4px 14px; border-radius: 15px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow 150ms; }
