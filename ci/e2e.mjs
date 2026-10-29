@@ -247,6 +247,24 @@ try {
   await page.click('button[aria-label="Voltar"]');
   await page.waitForTimeout(300);
 
+  // Widgets (no site a seção só aparece com ?widgets, para conferir a prévia)
+  step = 'Ajustes de widgets';
+  await page.goto(URL + (URL.includes('?') ? '&' : '?') + 'widgets', { waitUntil: 'networkidle' });
+  await page.waitForSelector('.page', { timeout: 15000 });
+  await page.click('button[aria-label^="Ajustes e conta"]');
+  await page.click('.set-menu .set-row:has-text("Widgets")');
+  await page.waitForSelector('.wprev');
+  await page.locator('input[aria-label="Opacidade do fundo dos widgets"]').fill('40');
+  await page.click('button[role="radio"]:has-text("Grande")');
+  await page.waitForTimeout(250);
+  const wBg = await page.locator('.wprev').evaluate((el) => getComputedStyle(el).backgroundColor);
+  ok('widgets: prévia segue opacidade e texto', /0\.4\)$/.test(wBg) && (await page.locator('.wprev.is-large').count()) === 1, wBg);
+  ok('widgets: lista os 6 tipos', (await page.locator('.set-group-wrap:has-text("Tipos de widget") .set-row').count()) === 6);
+  await shot(page, '56-celular-ajustes-widgets');
+  await page.click('button[aria-label="Voltar para Ajustes"]');
+  await page.click('button[aria-label="Voltar"]');
+  await page.waitForTimeout(300);
+
   // Escuro
   step = 'Escuro';
   await page.emulateMedia({ colorScheme: 'dark' });
