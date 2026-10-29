@@ -29,10 +29,26 @@ Rastreador de hábitos diários. A mesma base de código vira três coisas:
 - Construir ou evitar; todo dia, dias fixos ou N vezes por semana; temporizador; lembretes; pausas; notas e humor; marcos; detalhe por hábito; resumo semanal por e-mail.
 - Os hábitos do dia também aparecem na visão Hoje das tarefas, junto da agenda do dia.
 
+**Planejamento** (2.1)
+- Repetições avançadas: dias úteis que pulam feriados, “quinto dia útil”, último dia útil, último dia do mês, “toda primeira segunda”, “a cada 2 semanas na terça” e “3 dias depois de concluir”.
+- Feriados nacionais, móveis (Páscoa, Carnaval, Corpus Christi) e estaduais por UF, mais folgas pessoais.
+- Entrada rápida também entende prazo (“até sexta”), energia (~leve), estimativa (~30min), valor (R$ 120), “algum dia” e @agenda; colar várias linhas cria várias tarefas; ditado por voz.
+- Planejar o dia (encaixa tarefas nos horários livres), aviso de dia cheio, reorganizar atrasadas, “o que faço agora?”, encerrar o dia com diário de uma linha e revisão semanal.
+- Filtros inteligentes, modelos de tarefas, lista “Algum dia”, contas a pagar com total do mês e lembrete no dia útil anterior, capas de lista, cores personalizadas.
+- Listas compartilhadas (convite por e-mail, responsável por tarefa) e anexos nas tarefas.
+
+**Mais**
+- Agenda: visão do ano, zoom (Ctrl + rolagem ou pinça), horários livres, hábitos com horário e contagem regressiva.
+- Hábitos: versão mínima, dia difícil, rotina encadeada, modo viagem por hábito, parceiro de hábito e “neste dia, há um ano”.
+- Evolução: jardim dos hábitos, melhor horário, radar de adiamentos, estimado × real, correlações e retrospectiva em imagem.
+- Foco: sons ambientes (gerados no próprio app), tela cheia e notificação fixa no Android.
+- Ajustes: tema (claro, escuro, preto, pelo horário), cor de destaque, densidade, tamanho do texto, módulos e ordem, início da semana, 12/24h, expediente, lugares, backups diários e diagnóstico de lembretes.
+- Android: widget, ícones alternativos, bloqueio com digital, lembrete ao chegar num lugar e botões Concluir/Adiar nas notificações.
+
 **Geral**
 - Busca em tarefas, eventos e hábitos (tecla /).
-- Atalhos no computador: N novo item, 1 a 6 trocam de módulo, Esc fecha painéis.
-- Exportação do histórico em CSV; sincronização offline entre aparelhos.
+- Atalhos no computador: N novo item, 1 a 6 trocam de módulo, vírgula abre os Ajustes, Esc fecha painéis.
+- Exportação do histórico em CSV e backup completo em JSON; sincronização offline entre aparelhos.
 
 ## Resumo semanal por e-mail
 
@@ -73,7 +89,10 @@ src/
     FocusView.jsx         Pomodoro e cronômetro
     SearchSheet.jsx       busca
     Today.jsx, Stats.jsx, HabitSheet.jsx, HabitDetail.jsx, TimerSheet.jsx, ManageSheet.jsx   hábitos
-    AccountSheet.jsx, Overlays.jsx, ui.jsx
+    SettingsSheet.jsx     ajustes (aparência, módulos, feriados, lugares, aparelho, lembretes, backups)
+    Planner.jsx           rituais, “o que faço agora?”, modelos e filtros
+    Insights.jsx          jardim, insights e retrospectiva
+    AccountSheet.jsx, Overlays.jsx, LockScreen.jsx, ui.jsx
   lib/
     tasks.js              tarefas, visões, repetição, entrada rápida, matriz, Kanban, busca
     calendar.js           grade do mês, ocorrências de eventos, blocos sobrepostos
@@ -83,6 +102,13 @@ src/
     sync.js               fila offline + envio/leitura + tempo real
     dnd.js                arrastar e soltar (mouse e toque)
     native.js             lembretes, avisos, exportação
+    holidays.js           feriados e dias úteis
+    plan.js               horários livres, capacidade, planejar o dia, atrasadas, o que fazer agora
+    insights.js           melhores horários, adiamentos, jardim, contas, retrospectiva
+    settings.js, prefs.js ajustes e preferências usadas nos cálculos
+    sound.js              sons de conclusão e sons ambientes (Web Audio)
+    ritmoNative.js        ponte com o plugin Android próprio
+android-plugin/           plugin nativo (Java) e recursos injetados no APK por ci/android_native.py
 ci/e2e.mjs                teste no navegador
 .github/workflows/        site (Pages), APK (Releases) e teste no navegador
 ```

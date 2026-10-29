@@ -68,6 +68,33 @@ try {
   const d1 = await store(page);
   const cafe = (d1.tasks || []).find((t) => t.title === 'Comprar café');
   ok('entrada rápida cria tarefa com data, hora, prioridade e etiqueta', cafe && cafe.time === '09:00' && cafe.priority === 3 && (cafe.tags || []).includes('casa') && !!cafe.date, JSON.stringify(cafe));
+  // Entrada rápida: quinto dia útil + valor
+  await page.fill('.qa-input', 'Pagar aluguel todo quinto dia útil R$ 1.200');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  const dq = await store(page);
+  const alug = (dq.tasks || []).find((t) => t.title === 'Pagar aluguel');
+  ok('entrada rápida entende “todo quinto dia útil” e valor', alug && alug.repeat === 'monthly:biz5' && alug.amount === 1200, JSON.stringify(alug && { r: alug.repeat, a: alug.amount }));
+  // Colar várias linhas cria várias tarefas
+  await page.evaluate(() => {
+    const el = document.querySelector('.qa-input');
+    const dt = new DataTransfer();
+    dt.setData('text/plain', '- Comprar pão\n- Ligar para a escola\n- Levar o carro');
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await page.waitForTimeout(500);
+  const dp = await store(page);
+  ok('colar várias linhas cria uma tarefa por linha', ['Comprar pão', 'Ligar para a escola', 'Levar o carro'].every((t) => (dp.tasks || []).some((x) => x.title === t)));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+
+  // Planejar o dia (menu de Hoje)
+  await page.click('button[aria-label="Planejar"]');
+  await page.waitForTimeout(300);
+  await shot(page, '40-celular-menu-planejar');
+  await page.click('.menu-item:has-text("Planejar o dia")');
+  await page.waitForSelector('.ritual');
+  await shot(page, '41-celular-planejar-dia');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(400);
 
@@ -129,6 +156,10 @@ try {
   await shot(page, '08-celular-agenda-3dias');
   await page.click('button[role="radio"]:has-text("Lista")');
   await shot(page, '09-celular-agenda-lista');
+  await page.click('button[role="radio"]:has-text("Ano")');
+  await page.waitForSelector('.year');
+  ok('visão do ano mostra 12 meses', (await page.locator('.ymonth').count()) === 12);
+  await shot(page, '42-celular-agenda-ano');
 
   // Matriz
   await page.click('nav.tabbar button:has-text("Matriz")');
@@ -149,9 +180,31 @@ try {
   await page.click('nav.tabbar button:has-text("Hábitos")');
   await page.waitForSelector('.ring');
   await shot(page, '12-celular-habitos');
+  await page.click('.hard-chip');
+  await page.waitForTimeout(300);
+  const dh = await store(page);
+  ok('dia difícil fica gravado no dia', Object.values(dh.days || {}).some((d) => d.hard));
+  await page.click('.hard-chip');
+  const routine = page.locator('.routine-btn').first();
+  if (await routine.count()) {
+    await routine.click();
+    await page.waitForSelector('.runner');
+    await shot(page, '43-celular-rotina');
+    await page.click('.runner .btn-primary');
+    await page.waitForTimeout(400);
+    if (await page.locator('button[aria-label="Fechar rotina"]').count()) await page.click('button[aria-label="Fechar rotina"]');
+    else await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+  }
   await page.click('button[aria-label="Consistência"]');
   await page.waitForSelector('.stats');
   await shot(page, '13-celular-consistencia');
+  await page.click('button[role="radio"]:has-text("Jardim")');
+  await page.waitForSelector('.garden');
+  await shot(page, '44-celular-jardim');
+  await page.click('button[role="radio"]:has-text("Insights")');
+  await page.waitForTimeout(300);
+  await shot(page, '45-celular-insights');
 
   // Escuro
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -260,6 +313,52 @@ try {
   await page.click('.rail button[title^="Consistência"]');
   await page.waitForSelector('.stats');
   await shot(page, '32-desk-consistencia');
+
+  // Ajustes: tema preto
+  await page.keyboard.press(',');
+  await page.waitForSelector('.settings');
+  await shot(page, '46-desk-ajustes');
+  await page.click('.set-row:has-text("Aparência")');
+  await page.click('button[role="radio"]:has-text("Preto")');
+  await page.waitForTimeout(300);
+  ok('ajuste de tema aplica o preto', (await page.evaluate(() => document.documentElement.dataset.theme)) === 'black');
+  await shot(page, '47-desk-ajustes-preto');
+  await page.click('button[role="radio"]:has-text("Auto")');
+  await page.click('button[aria-label="Voltar para Ajustes"]');
+  await page.click('.set-row:has-text("Data, hora e feriados")');
+  await page.waitForTimeout(300);
+  await shot(page, '48-desk-ajustes-feriados');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+
+  // Modelos
+  await page.click('.rail button:has-text("Tarefas")');
+  const before = ((await store(page)).tasks || []).length;
+  await page.click('.lists-col button[aria-label="Adicionar lista, modelo ou filtro"]');
+  await page.click('.menu-item:has-text("Usar um modelo")');
+  await page.click('.tpl-main:has-text("Viagem")');
+  await shot(page, '49-desk-modelo');
+  await page.click('.sheet-foot .btn-primary');
+  await page.waitForTimeout(400);
+  ok('modelo cria as tarefas', ((await store(page)).tasks || []).length === before + 4);
+
+  // Filtro inteligente
+  await page.click('.lists-col button[aria-label="Adicionar lista, modelo ou filtro"]');
+  await page.click('.menu-item:has-text("Novo filtro")');
+  await page.fill('input[aria-label="Nome do filtro"]', 'Alta prioridade');
+  await page.click('.chip-toggle:has-text("Alta")');
+  await shot(page, '50-desk-filtro');
+  await page.click('.sheet-foot .btn-primary');
+  await page.waitForTimeout(400);
+  ok('filtro aparece na barra de listas', await page.locator('.lists-col .lp-item:has-text("Alta prioridade")').count());
+  await shot(page, '51-desk-filtro-visao');
+
+  // Agenda: ano e foco em tela cheia
+  await page.click('.rail button:has-text("Agenda")');
+  await page.click('button[role="radio"]:has-text("Ano")');
+  await page.waitForSelector('.year');
+  await shot(page, '52-desk-agenda-ano');
+  await page.click('button[role="radio"]:has-text("Mês")');
 
   // Busca por teclado
   await page.keyboard.press('/');
