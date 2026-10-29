@@ -285,7 +285,9 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
     }
     return layoutBlocks(raw);
   };
-  const gapsFor = (key) => (settings.calendarGaps && key >= todayKey ? freeSlots(data, key, settings, key === todayKey ? now : null, 45) : []);
+  // Horários livres: no dia e nos 3 dias; na semana inteira só hoje, para a grade não ficar carregada
+  const gapsFor = (key) =>
+    settings.calendarGaps && key >= todayKey && (days.length <= 3 || key === todayKey) ? freeSlots(data, key, settings, key === todayKey ? now : null, 45) : [];
   const allDayFor = (key) => {
     const it = map.get(key) || { events: [], tasks: [] };
     return { events: it.events.filter((o) => o.ev.allDay || o.date !== key), tasks: it.tasks.filter((t) => !t.time) };
