@@ -333,6 +333,38 @@ export function repeatText(rule) {
   }
 }
 
+/**
+ * Opções de repetição que fazem sentido para uma data (ex.: 05/11/2026 = quinta, 1ª quinta, 3º dia útil).
+ * forTasks inclui as regras "depois de concluir".
+ */
+export function repeatChoices(dateKey, current = '', forTasks = true) {
+  const opts = [{ value: '', label: 'Não repete' }, { value: 'daily', label: 'Todo dia' }, { value: 'bizdays', label: 'Dias úteis (pula feriados)' }, { value: 'weekdays', label: 'Segunda a sexta' }];
+  if (dateKey) {
+    const d = fromKey(dateKey);
+    const wd = d.getDay();
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    opts.push({ value: `weekly:${wd}`, label: `Toda ${WD_FULL[wd]}` });
+    opts.push({ value: `weekly:${wd}/2`, label: `A cada 2 semanas (${WD_FULL[wd]})` });
+    opts.push({ value: 'monthly', label: `Todo mês no dia ${d.getDate()}` });
+    const nth = Math.ceil(d.getDate() / 7);
+    const last = new Date(y, m, 0).getDate();
+    if (nth <= 4) opts.push({ value: `monthly:w${nth}-${wd}`, label: repeatText(`monthly:w${nth}-${wd}`) });
+    if (d.getDate() + 7 > last) opts.push({ value: `monthly:wL-${wd}`, label: repeatText(`monthly:wL-${wd}`) });
+    if (d.getDate() === last) opts.push({ value: 'monthly:last', label: 'Todo mês, no último dia' });
+    if (isBusinessDay(dateKey)) {
+      let n = 0;
+      for (let i = 1; i <= d.getDate(); i++) if (isBusinessDay(ymKey(y, m, i))) n++;
+      if (lastBusinessDay(y, m) === dateKey) opts.push({ value: 'monthly:lastbiz', label: 'Todo mês, no último dia útil' });
+      if (n <= 10) opts.push({ value: `monthly:biz${n}`, label: `Todo mês, no ${n}º dia útil` });
+    }
+    opts.push({ value: 'yearly', label: 'Todo ano' });
+  } else opts.push({ value: 'weekly', label: 'Toda semana' }, { value: 'monthly', label: 'Todo mês' }, { value: 'yearly', label: 'Todo ano' });
+  if (forTasks) opts.push({ value: 'after:1d', label: '1 dia depois de concluir' }, { value: 'after:1w', label: '1 semana depois de concluir' }, { value: 'after:1m', label: '1 mês depois de concluir' });
+  if (current && !opts.some((o) => o.value === current)) opts.push({ value: current, label: repeatText(current) });
+  return opts;
+}
+
 export const REPEAT_OPTIONS = [
   { value: '', label: 'Não repete' },
   { value: 'daily', label: 'Todo dia' },

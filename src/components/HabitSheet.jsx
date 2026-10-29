@@ -38,7 +38,7 @@ export function HabitSheet({ mode, initial, desktop, onClose, onSave, onDelete, 
   const submit = (e) => {
     e.preventDefault();
     if (!valid) return;
-    const out = { ...form, name: form.name.trim(), unit: form.unit.trim() };
+    const out = { ...form, name: form.name.trim(), unit: form.unit.trim(), minimum: (form.minimum || '').trim() };
     if (out.kind === 'avoid' || out.duration > 0) out.target = 1;
     if (out.kind === 'avoid') out.duration = 0;
     if (out.freq === 'weekly') out.days = ALL_DAYS;
@@ -228,6 +228,23 @@ export function HabitSheet({ mode, initial, desktop, onClose, onSave, onDelete, 
           />
           {timed && <p className="field-hint">Tocar no círculo abre o temporizador; ao terminar, o hábito é marcado sozinho.</p>}
         </div>
+      )}
+
+      {!avoid && (
+        <label className="field" htmlFor="habit-min">
+          <span className="field-label">Versão mínima (opcional)</span>
+          <input
+            id="habit-min"
+            className="text-input"
+            value={form.minimum || ''}
+            onChange={(e) => set({ minimum: e.target.value })}
+            placeholder="Ex.: 1 página, 5 minutos, só calçar o tênis"
+            maxLength={40}
+            autoComplete="off"
+            enterKeyHint="done"
+          />
+          <span className="field-hint">Nos dias corridos, faça só isso: conta como feito e mantém a sequência.</span>
+        </label>
       )}
 
       <div className="field">

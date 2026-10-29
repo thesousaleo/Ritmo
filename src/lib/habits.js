@@ -450,3 +450,24 @@ export function saveLocal(data) {
     /* modo privado ou storage cheio */
   }
 }
+
+/** Hábito que um parceiro compartilhou comigo (RPC partner_habits): sequência e status de hoje. */
+export function partnerHabitView(p, today) {
+  const h = normalizeHabit({
+    id: p.habit_id,
+    name: p.name,
+    icon: p.icon,
+    color: p.color,
+    kind: p.kind,
+    freq: p.freq,
+    perWeek: p.per_week,
+    days: (p.days || []).map(Number),
+    target: Number(p.target) || 1,
+    createdAt: String(p.created_on).slice(0, 10),
+  });
+  const log = {};
+  for (const c of p.checkins || []) log[String(c.day).slice(0, 10)] = { [h.id]: Number(c.count) || 0 };
+  const data = { habits: [h], log, breaks: Array.isArray(p.breaks) ? p.breaks : [] };
+  const k = keyOf(today);
+  return { h, owner: p.owner_name || 'Parceiro', ownerId: p.owner_id, doneToday: isDone(h, log, k), listedToday: isListed(h, today), streak: currentStreak(h, data, today) };
+}

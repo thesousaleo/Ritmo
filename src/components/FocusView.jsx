@@ -5,6 +5,43 @@ import { PageHeader } from './Today.jsx';
 import { colorOf, keyOf } from '../lib/habits.js';
 import { groupsFor } from '../lib/tasks.js';
 import { PHASE_LABEL, isRunning, remaining, elapsed, focusStats, fmtClock, fmtMinutes } from '../lib/focus.js';
+import { AMBIENTS, setAmbientVolume } from '../lib/sound.js';
+import { focusOnTask } from '../lib/insights.js';
+import { keepAwake } from '../lib/native.js';
+import { Portal, useEscape } from './ui.jsx';
+
+/** Tela cheia: só o tempo, a tarefa e um botão. */
+function FullFocus({ label, phase, ms, progress, running, onToggle, onExit }) {
+  useEscape(onExit);
+  useEffect(() => {
+    let lock = null;
+    keepAwake().then((l) => (lock = l));
+    const el = document.documentElement;
+    if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {});
+    return () => {
+      if (lock && lock.release) lock.release().catch(() => {});
+      if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    };
+  }, []);
+  return (
+    <Portal>
+      <motion.div className="fullfocus" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25, ease: EASE_OUT }} role="dialog" aria-label="Foco em tela cheia">
+        <button type="button" className="icon-btn ghost fullfocus-exit" onClick={onExit} aria-label="Sair da tela cheia">
+          <Icon name="Minimize2" size={20} />
+        </button>
+        <span className="fullfocus-phase">{PHASE_LABEL[phase]}</span>
+        <span className="fullfocus-time">{fmtClock(ms)}</span>
+        <span className="fullfocus-bar" aria-hidden="true">
+          <span style={{ transform: `scaleX(${Math.max(0, Math.min(1, progress))})` }} />
+        </span>
+        <span className="fullfocus-label">{label}</span>
+        <button type="button" className="focus-play" onClick={onToggle} aria-label={running ? 'Pausar' : 'Continuar'}>
+          <Icon name={running ? 'Pause' : 'Play'} size={28} strokeWidth={2.4} />
+        </button>
+      </motion.div>
+    </Portal>
+  );
+}
 
 const WD = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
@@ -50,6 +87,9 @@ export function FocusView({ store, todayKey, desktop, headerRight }) {
   const now = useNow(running);
   const targetPop = usePopover();
   const setPop = usePopover();
+  const soundPop = usePopover();
+  const [full, setFull] = useState(false);
+  const ambient = store.device.ambient || 'off';
 
   const isBreak = s.phase === 'short' || s.phase === 'long';
   const ms = s.phase === 'stopwatch' ? elapsed(s, now) : remaining(s, now);
@@ -61,6 +101,7 @@ export function FocusView({ store, todayKey, desktop, headerRight }) {
   const task = s.taskId && data.tasks.find((t) => t.id === s.taskId);
   const habit = s.habitId && data.habits.find((h) => h.id === s.habitId);
   const targetLabel = task ? task.title : habit ? habit.name : 'Escolher tarefa';
+  const spent = task && task.duration > 0 ? focusOnTask(data, task.id) + (s.phase === 'focus' || s.phase === 'stopwatch' ? Math.floor(elapsed(s, now) / 60000) : 0) : 0;
 
   const stats = focusStats(data);
   const maxWeek = Math.max(30, ...stats.week.map((d) => d.minutes));
@@ -84,6 +125,12 @@ export function FocusView({ store, todayKey, desktop, headerRight }) {
   return (
     <div className="focus-page">
       <PageHeader title="Foco" subtitle={isBreak ? 'Respire. A próxima rodada já vem.' : 'Uma coisa de cada vez.'}>
+        <button type="button" className={`icon-btn${ambient !== 'off' ? ' is-active' : ''}`} onClick={(e) => soundPop.open(e)} aria-label="Som ambiente">
+          <Icon name={ambient !== 'off' ? 'Volume2' : 'VolumeX'} size={18} />
+        </button>
+        <button type="button" className="icon-btn" onClick={() => setFull(true)} aria-label="Tela cheia">
+          <Icon name="Maximize2" size={18} />
+        </button>
         <button type="button" className="icon-btn" onClick={(e) => setPop.open(e)} aria-label="Ajustes do foco">
           <Icon name="Settings2" size={18} />
         </button>
@@ -107,6 +154,11 @@ export function FocusView({ store, todayKey, desktop, headerRight }) {
             <span className="truncate">{targetLabel}</span>
             <Icon name="ChevronDown" size={14} />
           </button>
+          {task && task.duration > 0 && (
+            <span className={`focus-est${spent > task.duration ? ' is-over' : ''}`}>
+              {fmtMinutes(spent)} de {fmtMinutes(task.duration)} estimados
+            </span>
+          )}
 
           <div className="focus-ring" role="timer" aria-label={`${PHASE_LABEL[s.phase]}: ${fmtClock(ms)}`}>
             <svg viewBox="0 0 260 260" aria-hidden="true">
@@ -260,6 +312,32 @@ export function FocusView({ store, todayKey, desktop, headerRight }) {
             />
           </Popover>
         )}
+        {soundPop.state && (
+          <Popover key="snd" anchor={soundPop.state.anchor} desktop={desktop} onClose={soundPop.close} title="Som ambiente" width={260} align="end">
+            <MenuList
+              items={AMBIENTS.map((a) => ({ key: a.id, label: a.label, icon: a.icon, active: ambient === a.id }))}
+              onPick={(it) => store.setDevice({ ambient: it.key })}
+            />
+            <div className="fs-row px-3 pb-2">
+              <Icon name="Volume1" size={16} />
+              <input
+                type="range"
+                min="0.05"
+                max="1"
+                step="0.05"
+                value={store.device.ambientVolume ?? 0.5}
+                className="flex-1 accent-range"
+                aria-label="Volume"
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  store.setDevice({ ambientVolume: v });
+                  setAmbientVolume(v);
+                }}
+              />
+            </div>
+            <p className="field-hint px-3 pb-2">Toca só enquanto o foco está rodando.</p>
+          </Popover>
+        )}
         {setPop.state && (
           <Popover key="s" anchor={setPop.state.anchor} desktop={desktop} onClose={setPop.close} title="Ajustes do foco" width={300} align="end">
             <div className="fsettings">
@@ -276,6 +354,20 @@ export function FocusView({ store, todayKey, desktop, headerRight }) {
               </div>
             </div>
           </Popover>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {full && (
+          <FullFocus
+            key="full"
+            label={task || habit ? targetLabel : ''}
+            phase={s.phase}
+            ms={ms}
+            progress={progress}
+            running={running}
+            onToggle={() => (running ? f.pause() : f.start())}
+            onExit={() => setFull(false)}
+          />
         )}
       </AnimatePresence>
     </div>

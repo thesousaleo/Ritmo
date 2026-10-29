@@ -4,8 +4,11 @@ import { Icon, AnimatedNumber, RollingNumber, SPRING, EASE_OUT } from './ui.jsx'
 import {
   PERIODS, PERIOD_SHORT, WEEKDAY_LETTER, MOODS, colorOf, keyOf, fromKey, addDays, fmtLong, greetingFor,
   isListed, isScheduled, isWeekly, isAvoid, isDone, countOf, currentStreak, daySummary, weekCount, weekStart,
-  activeHabits, breakOn, shortDate, streakShort,
+  activeHabits, breakOn, shortDate, streakShort, isMinimal, isHardDay, partnerHabitView, inBreak,
 } from '../lib/habits.js';
+import { onThisDay } from '../lib/insights.js';
+import { fmtTime, weekOrder } from '../lib/prefs.js';
+import { Portal, useEscape } from './ui.jsx';
 
 /* ------------------------------------------------------------------ */
 /* Cabeçalho de página + botão de conta (celular)                      */
@@ -137,7 +140,8 @@ function MiniRing({ value }) {
 function WeekStrip({ data, selectedKey, onSelect, today }) {
   const scroller = useRef(null);
   const days = useMemo(() => {
-    const end = addDays(today, 6 - today.getDay());
+    const ws = weekOrder()[0];
+    const end = addDays(today, 6 - ((today.getDay() - ws + 7) % 7));
     const start = addDays(end, -27);
     const out = [];
     for (let d = start; d <= end; d = addDays(d, 1)) out.push(d);
@@ -276,10 +280,11 @@ function CheckButton({ habit, count, onPress, timerRunning }) {
   );
 }
 
-function HabitRow({ habit, data, dayKey, today, streak, onToggle, onOpen, timerRunning }) {
+function HabitRow({ habit, data, dayKey, today, streak, onToggle, onOpen, timerRunning, onMinimal }) {
   const c = colorOf(habit.color);
   const count = countOf(data.log, dayKey, habit.id);
   const done = count >= habit.target;
+  const minimal = done && isMinimal(data, dayKey, habit.id);
   const hasNote = !!(data.notes && data.notes[dayKey] && data.notes[dayKey][habit.id]);
 
   let meta;
@@ -290,9 +295,10 @@ function HabitRow({ habit, data, dayKey, today, streak, onToggle, onOpen, timerR
   else if (habit.duration > 0) meta = timerRunning ? 'Temporizador em andamento' : `${habit.duration} minutos`;
   else if (isAvoid(habit)) meta = done ? 'Evitado hoje' : 'Evitar';
   else meta = habit.unit || 'Uma vez';
+  if (!done && inBreak(data, dayKey, habit) && !breakOn(data, dayKey)) meta = 'Pausado: modo viagem';
 
   return (
-    <div className={`row${done ? ' is-done' : ''}`} style={{ '--c': c.value }}>
+    <div className={`row${done ? ' is-done' : ''}${minimal ? ' is-minimal' : ''}`} style={{ '--c': c.value }}>
       <button type="button" className="row-main" onClick={() => onOpen(habit)} aria-label={`Abrir ${habit.name}`}>
         <span className={`tile${isAvoid(habit) ? ' is-avoid' : ''}`}>
           <Icon name={habit.icon} size={20} />
@@ -303,12 +309,12 @@ function HabitRow({ habit, data, dayKey, today, streak, onToggle, onOpen, timerR
             <motion.span className="strike" initial={false} animate={{ scaleX: done && !isAvoid(habit) ? 1 : 0 }} transition={{ duration: done ? 0.22 : 0.12, ease: EASE_OUT }} />
           </span>
           <span className="row-meta">
-            <span className="truncate">{meta}</span>
+            <span className="truncate">{minimal ? `Mínimo: ${habit.minimum}` : meta}</span>
             {hasNote && <Icon name="StickyNote" size={13} className="flex-none" aria-label="Tem nota" />}
             {habit.reminder && !done && dayKey === keyOf(today) && (
               <span className="reminder-chip">
                 <Icon name="Bell" size={11} strokeWidth={2.4} />
-                {habit.reminder}
+                {fmtTime(habit.reminder)}
               </span>
             )}
             {streak > 0 && (
@@ -321,7 +327,167 @@ function HabitRow({ habit, data, dayKey, today, streak, onToggle, onOpen, timerR
           </span>
         </span>
       </button>
+      {habit.minimum && !done && !isAvoid(habit) && onMinimal && (
+        <button type="button" className="min-btn" onClick={() => onMinimal(habit)} title={`Só o mínimo: ${habit.minimum}`} aria-label={`Fazer só o mínimo de ${habit.name}: ${habit.minimum}`}>
+          mín.
+        </button>
+      )}
       <CheckButton habit={habit} count={count} onPress={() => onToggle(habit)} timerRunning={timerRunning} />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Rotina encadeada: um hábito por vez, em sequência                   */
+/* ------------------------------------------------------------------ */
+function RoutineRunner({ title, habits, data, dayKey, onToggle, onMinimal, onClose }) {
+  useEscape(onClose);
+  const pending = habits.filter((h) => !isDone(h, data.log, dayKey));
+  const [skipped, setSkipped] = useState([]);
+  const queue = pending.filter((h) => !skipped.includes(h.id));
+  const cur = queue[0];
+  const doneCount = habits.length - pending.length;
+  useEffect(() => {
+    if (!cur) {
+      const id = setTimeout(onClose, 1400);
+      return () => clearTimeout(id);
+    }
+    return undefined;
+  }, [cur]); // eslint-disable-line react-hooks/exhaustive-deps
+  const c = cur ? colorOf(cur.color) : null;
+  return (
+    <Portal>
+      <motion.div className="runner" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: EASE_OUT }} role="dialog" aria-label={`Rotina: ${title}`}>
+        <div className="runner-top">
+          <span className="runner-title">{title}</span>
+          <button type="button" className="icon-btn ghost" onClick={onClose} aria-label="Fechar rotina">
+            <Icon name="X" size={20} />
+          </button>
+        </div>
+        <div className="runner-dots" aria-hidden="true">
+          {habits.map((h) => (
+            <i key={h.id} className={isDone(h, data.log, dayKey) ? 'is-done' : cur && h.id === cur.id ? 'is-cur' : ''} style={{ '--c': colorOf(h.color).value }} />
+          ))}
+        </div>
+        <AnimatePresence mode="wait">
+          {cur ? (
+            <motion.div key={cur.id} className="runner-card" style={{ '--c': c.value, '--on': c.on }} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }} transition={{ duration: 0.2, ease: EASE_OUT }}>
+              <span className="runner-icon">
+                <Icon name={cur.icon} size={34} />
+              </span>
+              <h2 className="runner-name">{cur.name}</h2>
+              <p className="field-hint">
+                {cur.duration > 0 ? `${cur.duration} minutos` : cur.target > 1 ? `${countOf(data.log, dayKey, cur.id)} de ${cur.target} ${cur.unit}` : cur.unit || ''}
+              </p>
+              <div className="runner-actions">
+                <button type="button" className="btn-primary" onClick={() => onToggle(cur)}>
+                  <Icon name={cur.duration > 0 ? 'Play' : 'Check'} size={18} /> {cur.duration > 0 ? 'Começar' : cur.target > 1 ? 'Mais 1' : 'Feito'}
+                </button>
+                {cur.minimum && (
+                  <button type="button" className="btn-secondary" onClick={() => onMinimal(cur)}>
+                    Só o mínimo: {cur.minimum}
+                  </button>
+                )}
+                <button type="button" className="btn-link" onClick={() => setSkipped((x) => [...x, cur.id])}>
+                  Pular por agora
+                </button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div key="end" className="runner-card is-end" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.2, ease: EASE_OUT }}>
+              <span className="runner-icon">
+                <Icon name="PartyPopper" size={34} />
+              </span>
+              <h2 className="runner-name">{skipped.length ? 'Rotina encerrada' : 'Rotina completa'}</h2>
+              <p className="field-hint">
+                {doneCount} de {habits.length} feitos
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </Portal>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Hábitos de parceiros (só leitura)                                   */
+/* ------------------------------------------------------------------ */
+function PartnerSection({ data, today }) {
+  const list = (data.partnerHabits || []).map((p) => partnerHabitView(p, today));
+  if (!list.length) return null;
+  return (
+    <section className="flex flex-col gap-2" aria-labelledby="sec-partners">
+      <div className="section-head">
+        <h2 id="sec-partners" className="is-quiet">
+          Com parceiros
+        </h2>
+      </div>
+      <div className="group">
+        {list.map((x) => (
+          <div key={`${x.ownerId}-${x.h.id}`} className="row is-partner" style={{ '--c': colorOf(x.h.color).value }}>
+            <span className="row-main">
+              <span className="tile">
+                <Icon name={x.h.icon} size={20} />
+              </span>
+              <span className="row-text">
+                <span className="row-title">
+                  <span className="row-title-text">{x.h.name}</span>
+                </span>
+                <span className="row-meta">
+                  <span className="truncate">{x.owner}</span>
+                  {x.streak > 0 && (
+                    <span className="streak">
+                      <Icon name="Flame" size={13} strokeWidth={2.4} />
+                      {x.streak}
+                    </span>
+                  )}
+                </span>
+              </span>
+            </span>
+            <span className={`partner-state${x.doneToday ? ' is-done' : ''}`}>{x.doneToday ? 'Feito hoje' : x.listedToday ? 'Pendente' : 'Folga'}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Diário de uma linha + dia difícil                                   */
+/* ------------------------------------------------------------------ */
+function DayNote({ data, dayKey, isToday, onDay }) {
+  const info = (data.days || {})[dayKey] || {};
+  const [text, setText] = useState(info.journal || '');
+  useEffect(() => setText(info.journal || ''), [dayKey, info.journal]);
+  // Dia difícil: no máximo um a cada 7 dias, para continuar significando algo
+  const recentHard = Object.keys(data.days || {}).some((k) => k !== dayKey && data.days[k].hard && Math.abs(fromKey(k) - fromKey(dayKey)) < 7 * 86400000);
+  const save = () => {
+    if (text.trim() !== (info.journal || '')) onDay(dayKey, { journal: text.trim() });
+  };
+  return (
+    <div className="daynote">
+      <input
+        className="daynote-input"
+        value={text}
+        maxLength={280}
+        placeholder={isToday ? 'Uma linha sobre hoje' : 'Uma linha sobre este dia'}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        enterKeyHint="done"
+        aria-label="Diário do dia"
+      />
+      <button
+        type="button"
+        className={`hard-chip${info.hard ? ' is-on' : ''}`}
+        onClick={() => onDay(dayKey, { hard: !info.hard })}
+        disabled={!info.hard && recentHard}
+        title={!info.hard && recentHard ? 'Você já usou um dia difícil nesta semana' : 'Dia difícil: o dia não cobra nada e as sequências ficam protegidas'}
+        aria-pressed={!!info.hard}
+      >
+        <Icon name="CloudDrizzle" size={14} /> Dia difícil
+      </button>
     </div>
   );
 }
@@ -357,7 +523,8 @@ function MoodPicker({ value, onChange, isToday }) {
 /* ------------------------------------------------------------------ */
 /* Tela Hoje                                                           */
 /* ------------------------------------------------------------------ */
-export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onOpen, onCreate, onManage, onMood, onEndBreak, timer, headerRight, title }) {
+export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onOpen, onCreate, onManage, onMood, onEndBreak, timer, headerRight, title, onMinimal, onDay }) {
+  const [runner, setRunner] = useState(null); // id do período
   const selectedDate = fromKey(selectedKey);
   const isToday = selectedKey === keyOf(today);
   const active = activeHabits(data);
@@ -379,9 +546,12 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onO
 
   const groups = PERIODS.map((p) => ({ ...p, habits: listed.filter((h) => h.period === p.id) })).filter((g) => g.habits.length);
   const remaining = summary.total - summary.done;
+  const memory = isToday ? onThisDay(data, selectedKey) : null;
   const headline = pause
     ? 'Dia em pausa'
-    : summary.total === 0
+    : summary.hard && summary.total === summary.done
+      ? 'Dia difícil: pegue leve'
+      : summary.total === 0
       ? 'Nada obrigatório hoje'
       : remaining === 0
         ? 'Dia completo'
@@ -457,6 +627,21 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onO
         </section>
 
         <MoodPicker value={(data.moods && data.moods[selectedKey]) || 0} onChange={(m) => onMood(selectedKey, m)} isToday={isToday} />
+        {onDay && <DayNote data={data} dayKey={selectedKey} isToday={isToday} onDay={onDay} />}
+        {isHardDay(data, selectedKey) && (
+          <p className="soft-note">
+            <Icon name="CloudDrizzle" size={16} />
+            Dia difícil: o que ficar pendente hoje não conta e suas sequências seguem protegidas.
+          </p>
+        )}
+        {memory && (
+          <div className="memory">
+            <span className="memory-label">
+              <Icon name="History" size={14} /> Neste dia, há um ano
+            </span>
+            <p>{memory.journal || `${memory.tasks.length ? `${memory.tasks.length} tarefas concluídas` : ''}${memory.tasks.length && memory.habits ? ' e ' : ''}${memory.habits ? `${memory.habits} hábitos feitos` : ''}.`}</p>
+          </div>
+        )}
       </div>
 
       <div className="today-main">
@@ -476,8 +661,15 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onO
             <section key={g.id} className="flex flex-col gap-2" aria-labelledby={`sec-${g.id}`}>
               <div className="section-head">
                 <h2 id={`sec-${g.id}`}>{g.label}</h2>
-                <span className="section-count">
-                  {d} de {g.habits.length}
+                <span className="flex items-center gap-2">
+                  {isToday && !pause && g.habits.length - d >= 2 && (
+                    <button type="button" className="routine-btn" onClick={() => setRunner(g.id)}>
+                      <Icon name="Play" size={12} strokeWidth={2.6} /> Rotina
+                    </button>
+                  )}
+                  <span className="section-count">
+                    {d} de {g.habits.length}
+                  </span>
                 </span>
               </div>
               <div className="group">
@@ -491,6 +683,7 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onO
                     streak={streaks[h.id]}
                     onToggle={onToggle}
                     onOpen={onOpen}
+                    onMinimal={onMinimal}
                     timerRunning={!!timer && timer.habitId === h.id && timer.day === selectedKey}
                   />
                 ))}
@@ -517,11 +710,30 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onO
           </section>
         )}
 
+        <PartnerSection data={data} today={today} />
+
         <button type="button" className="manage-link" onClick={onManage}>
           <Icon name="ListOrdered" size={17} />
-          Organizar hábitos, arquivo e pausas
+          Organizar hábitos, arquivo, pausas e modo viagem
         </button>
       </div>
+      <AnimatePresence>
+        {runner && (
+          <RoutineRunner
+            key="runner"
+            title={(PERIODS.find((p) => p.id === runner) || {}).label || 'Rotina'}
+            habits={(groups.find((g) => g.id === runner) || { habits: [] }).habits.filter((h) => !isWeekly(h) || !isDone(h, data.log, selectedKey))}
+            data={data}
+            dayKey={selectedKey}
+            onToggle={(h) => {
+              onToggle(h);
+              if (h.duration > 0) setRunner(null);
+            }}
+            onMinimal={onMinimal}
+            onClose={() => setRunner(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Icon, AnimatedNumber, SPRING, swapProps } from './ui.jsx';
+import { Icon, AnimatedNumber, SPRING, swapProps, Segmented } from './ui.jsx';
 import { PageHeader } from './Today.jsx';
+import { Garden, InsightsPanel } from './Insights.jsx';
 import {
   WEEKDAY_LETTER, WEEKDAY_SHORT, MOODS, colorOf, keyOf, addDays, fmtLong, fmtShort, fmtMonth,
   currentStreak, daySummary, habitRate, activeHabits, isWeekly, isAvoid, streakShort, moodInsights, milestoneGallery,
@@ -20,7 +21,37 @@ function heatLevel(s) {
 
 const moodIcon = (v) => (MOODS[Math.min(4, Math.max(0, Math.round(v) - 1))] || MOODS[2]).icon;
 
-export function StatsView({ data, today, weeks = 18, onReset, onOpen, headerRight }) {
+export function StatsView(props) {
+  const [tab, setTab] = useState('summary');
+  const { data, today, onOpen, onOpenTask, headerRight } = props;
+  return (
+    <div className="stats-wrap">
+      <div className="stats-header">
+        <PageHeader title="Evolução" subtitle="Seus hábitos, tarefas e foco ao longo do tempo">
+          {headerRight}
+        </PageHeader>
+        <div className="stats-tabs">
+          <Segmented
+            id="stats-tab"
+            label="Seção"
+            value={tab}
+            onChange={setTab}
+            options={[
+              { id: 'summary', label: 'Resumo' },
+              { id: 'garden', label: 'Jardim' },
+              { id: 'insights', label: 'Insights' },
+            ]}
+          />
+        </div>
+      </div>
+      {tab === 'summary' && <SummaryView {...props} />}
+      {tab === 'garden' && <Garden data={data} today={today} onOpen={onOpen} />}
+      {tab === 'insights' && <InsightsPanel data={data} today={today} onOpenTask={onOpenTask || (() => {})} />}
+    </div>
+  );
+}
+
+function SummaryView({ data, today, weeks = 18, onReset, onOpen }) {
   const todayKey = keyOf(today);
   const [picked, setPicked] = useState(todayKey);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -115,12 +146,6 @@ export function StatsView({ data, today, weeks = 18, onReset, onOpen, headerRigh
 
   return (
     <div className="stats">
-      <div className="stats-header">
-        <PageHeader title="Consistência" subtitle="Seus hábitos, tarefas e foco ao longo das semanas">
-          {headerRight}
-        </PageHeader>
-      </div>
-
       <ProductivityPanel data={data} today={today} />
 
       <section className="panel stats-heat" aria-labelledby="heat-title">

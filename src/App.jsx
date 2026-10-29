@@ -31,6 +31,7 @@ import { useRitmoStore } from './store.js';
 import { ALL_DAYS, keyOf, todayDate, normalizeHabit, fmtLong } from './lib/habits.js';
 import { viewMeta } from './lib/tasks.js';
 import { isRunning } from './lib/focus.js';
+import { startAmbient, stopAmbient } from './lib/sound.js';
 import { isNative } from './lib/native.js';
 
 const UI_KEY = 'ritmo.ui';
@@ -257,6 +258,15 @@ export default function App() {
     </>
   );
   const focusRunning = isRunning(store.focus.state);
+  const focusPhase = store.focus.state.phase;
+  // Som ambiente: toca enquanto o foco (ou cronômetro) está rodando
+  useEffect(() => {
+    const on = focusRunning && (focusPhase === 'focus' || focusPhase === 'stopwatch') && store.device.ambient && store.device.ambient !== 'off';
+    if (on) startAmbient(store.device.ambient, store.device.ambientVolume ?? 0.5);
+    else stopAmbient();
+    return undefined;
+  }, [focusRunning, focusPhase, store.device.ambient]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => stopAmbient(), []);
   const panelMode = desktop && wide && module === 'tasks';
   const anyOverlay = !!(
     quickAdd || listSheet || eventSheet || create || habitSheet || habitDetail || manageOpen || accountOpen || timerOpen || (task && !panelMode) ||
@@ -304,6 +314,8 @@ export default function App() {
         onManage={() => setManageOpen(true)}
         onMood={store.habits.setMood}
         onEndBreak={store.habits.endBreak}
+        onMinimal={(h) => store.habits.checkMinimal(h, habitDay)}
+        onDay={store.habits.setDay}
         timer={timer}
         title="Hábitos"
         headerRight={
@@ -329,6 +341,7 @@ export default function App() {
         weeks={desktop ? 26 : 18}
         onReset={store.account.resetHistory}
         onOpen={(h) => setHabitDetail({ habitId: h.id, dayKey: todayKey })}
+        onOpenTask={openTask}
         headerRight={
           <>
             {!desktop && (
@@ -519,6 +532,7 @@ export default function App() {
                 setHabitSheet({ mode: 'edit', habit: h });
               }}
               onNote={store.habits.saveNote}
+              store={store}
             />
           )}
         </AnimatePresence>

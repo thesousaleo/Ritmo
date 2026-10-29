@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Icon, Sheet, swapProps } from '../ui.jsx';
 import { COLORS, colorOf } from '../../lib/habits.js';
-import { REPEAT_OPTIONS, reminderOptions, repeatText, minutesOf, hhmm } from '../../lib/tasks.js';
+import { repeatChoices, reminderOptions, minutesOf, hhmm } from '../../lib/tasks.js';
 
 /** Criar ou editar um evento da agenda. */
 export function EventSheet({ desktop, initial, onClose, onSave, onDelete }) {
@@ -12,7 +12,7 @@ export function EventSheet({ desktop, initial, onClose, onSave, onDelete }) {
   const c = colorOf(form.color);
   const endBeforeStart = !form.allDay && form.endDate === form.date && form.end && form.start && form.end <= form.start;
   const valid = form.title.trim() && form.date && form.endDate >= form.date && !endBeforeStart;
-  const repeatOptions = REPEAT_OPTIONS.some((o) => o.value === (form.repeat || '')) ? REPEAT_OPTIONS : [...REPEAT_OPTIONS, { value: form.repeat, label: repeatText(form.repeat) }];
+  const repeatOptions = repeatChoices(form.date, form.repeat || '', false);
 
   const setStart = (start) => {
     // Mantém a duração ao mudar o início
@@ -124,6 +124,14 @@ export function EventSheet({ desktop, initial, onClose, onSave, onDelete }) {
           ))}
         </div>
       </fieldset>
+
+      <div className="reminder-row">
+        <button type="button" className={`switch${form.countdown ? ' is-on' : ''}`} role="switch" aria-checked={!!form.countdown} onClick={() => set({ countdown: !form.countdown })}>
+          <span className="switch-knob" />
+          <span className="sr-only">Contagem regressiva</span>
+        </button>
+        <span className="field-hint flex-1">Contagem regressiva em Hoje (aniversários, viagens, provas)</span>
+      </div>
 
       <label className="field" htmlFor="ev-loc">
         <span className="field-label">Local</span>

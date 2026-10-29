@@ -1,14 +1,18 @@
 /* Agenda: grade do mês, semanas, ocorrências de eventos repetidos e disposição de blocos sobrepostos. Sem UI. */
 import { keyOf, fromKey, addDays } from './habits.js';
 import { occurrences, daysBetween, minutesOf } from './tasks.js';
+import { prefs } from './prefs.js';
 
 export const MONTHS_LONG = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 export const monthTitle = (d) => `${MONTHS_LONG[d.getMonth()]} de ${d.getFullYear()}`;
 
-/** 6 semanas a partir do domingo anterior ao dia 1. */
+/** Início da semana (domingo ou segunda, conforme os Ajustes) que contém d. */
+export const weekStartOf = (d) => addDays(d, -((d.getDay() - prefs.weekStart + 7) % 7));
+
+/** 6 semanas a partir do início da semana que contém o dia 1. */
 export function monthGrid(year, month) {
   const first = new Date(year, month, 1);
-  const start = addDays(first, -first.getDay());
+  const start = weekStartOf(first);
   const days = [];
   for (let i = 0; i < 42; i++) {
     const d = addDays(start, i);

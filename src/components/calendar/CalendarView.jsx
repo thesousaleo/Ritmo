@@ -3,13 +3,31 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Icon, Segmented, TaskCheck, EASE_OUT } from '../ui.jsx';
 import { PageHeader } from '../Today.jsx';
 import { TaskRow } from '../tasks/TaskRow.jsx';
-import { colorOf, keyOf, fromKey, addDays } from '../../lib/habits.js';
-import { monthGrid, monthTitle, rangeDays, itemsByDay, blockRange, layoutBlocks, snap, MONTHS_LONG } from '../../lib/calendar.js';
+import { colorOf, keyOf, fromKey, addDays, activeHabits, isListed, countOf } from '../../lib/habits.js';
+import { monthGrid, monthTitle, rangeDays, itemsByDay, blockRange, layoutBlocks, snap, MONTHS_LONG, weekStartOf } from '../../lib/calendar.js';
 import { dayLabel, hhmm, minutesOf, priorityOf } from '../../lib/tasks.js';
 import { dragProps, useDragMonitor } from '../../lib/dnd.js';
+import { holidayOn } from '../../lib/holidays.js';
+import { fmtTime, weekOrder } from '../../lib/prefs.js';
+import { freeSlots } from '../../lib/plan.js';
+import { yearActivity } from '../../lib/insights.js';
+import { fmtMinutes } from '../../lib/focus.js';
 
 const WD = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const MODE_KEY = 'ritmo.calmode';
+const ZOOM_KEY = 'ritmo.calzoom';
+const loadZoom = (desktop) => {
+  try {
+    const v = Number(localStorage.getItem(ZOOM_KEY));
+    if (v >= 28 && v <= 128) return v;
+  } catch (e) {
+    /* sem storage */
+  }
+  return desktop ? 52 : 48;
+};
+/** Altura de uma hora na tela, medida do próprio elemento (vale com zoom de texto e de pinça). */
+const hourPx = (el) => el.getBoundingClientRect().height / 24;
+const holidayOf = (settings, k) => (settings.showHolidays === false ? null : holidayOn(k));
 const loadMode = () => {
   try {
     return localStorage.getItem(MODE_KEY) || 'month';
@@ -32,7 +50,7 @@ function EventChip({ occ, onOpen, dense, day }) {
       tabIndex={0}
       {...dragProps({ type: 'event', id: ev.id }, null, { disabled: !!ev.repeat })}
     >
-      {!ev.allDay && (!day || occ.date === day) && <span className="mitem-time">{ev.start}</span>}
+      {!ev.allDay && (!day || occ.date === day) && <span className="mitem-time">{fmtTime(ev.start)}</span>}
       <span className="mitem-title">{ev.title}</span>
     </div>
   );
@@ -62,7 +80,7 @@ function TaskChip({ task, onOpen, onToggle }) {
       >
         {task.done && <Icon name="Check" size={9} strokeWidth={3.5} />}
       </button>
-      {task.time && <span className="mitem-time">{task.time}</span>}
+      {task.time && <span className="mitem-time">{fmtTime(task.time)}</span>}
       <span className="mitem-title">{task.title}</span>
     </div>
   );
@@ -74,12 +92,14 @@ function TaskChip({ task, onOpen, onToggle }) {
 function DayList({ dayKey, todayKey, items, data, store, onOpenTask, onOpenEvent, onCreate }) {
   const { events, tasks } = items || { events: [], tasks: [] };
   const empty = !events.length && !tasks.length;
+  const hol = holidayOf(store.settings, dayKey);
   return (
     <section className="daylist" aria-label={`Itens de ${dayLabel(dayKey, todayKey)}`}>
       <header className="daylist-head">
         <h2>
           {dayLabel(dayKey, todayKey)}
           <span className="daylist-date"> {fromKey(dayKey).getDate()} de {MONTHS_LONG[fromKey(dayKey).getMonth()]}</span>
+          {hol && <span className={`hol-tag is-${hol.kind}`}>{hol.name}</span>}
         </h2>
         <button type="button" className="icon-btn" onClick={() => onCreate({ date: dayKey })} aria-label="Adicionar neste dia">
           <Icon name="Plus" size={17} />
@@ -89,7 +109,7 @@ function DayList({ dayKey, todayKey, items, data, store, onOpenTask, onOpenEvent
       {events.map((o) => (
         <button key={o.id} type="button" className="ev-row" style={{ '--c': colorOf(o.ev.color).value }} onClick={() => onOpenEvent(o)}>
           <span className="ev-row-bar" />
-          <span className="ev-row-time">{o.ev.allDay ? 'Dia todo' : o.date === dayKey ? `${o.ev.start}${o.ev.end && o.endDate === dayKey ? `\n${o.ev.end}` : ''}` : 'Continua'}</span>
+          <span className="ev-row-time">{o.ev.allDay ? 'Dia todo' : o.date === dayKey ? `${fmtTime(o.ev.start)}${o.ev.end && o.endDate === dayKey ? `\n${fmtTime(o.ev.end)}` : ''}` : 'Continua'}</span>
           <span className="min-w-0 flex-1">
             <span className="ev-row-title">{o.ev.title}</span>
             {(o.ev.location || o.ev.repeat) && (
@@ -122,8 +142,8 @@ function MonthView({ cursor, selected, onSelect, todayKey, data, store, desktop,
     <div className={`month-wrap${desktop ? ' is-desktop' : ''}`}>
       <div className="month">
         <div className="month-wd" aria-hidden="true">
-          {WD.map((w) => (
-            <span key={w}>{desktop ? w : w[0].toUpperCase()}</span>
+          {weekOrder().map((i) => (
+            <span key={i}>{desktop ? WD[i] : WD[i][0].toUpperCase()}</span>
           ))}
         </div>
         <AnimatePresence mode="popLayout" initial={false}>
@@ -139,10 +159,12 @@ function MonthView({ cursor, selected, onSelect, todayKey, data, store, desktop,
               const it = map.get(d.key) || { events: [], tasks: [] };
               const all = [...it.events.map((o) => ({ k: 'e', o })), ...it.tasks.map((t) => ({ k: 't', t }))];
               const max = 3;
+              const hol = holidayOf(store.settings, d.key);
               return (
                 <div
                   key={d.key}
-                  className={`mcell${d.inMonth ? '' : ' is-out'}${d.key === todayKey ? ' is-today' : ''}${d.key === selected ? ' is-selected' : ''}`}
+                  className={`mcell${d.inMonth ? '' : ' is-out'}${d.key === todayKey ? ' is-today' : ''}${d.key === selected ? ' is-selected' : ''}${hol ? ' is-holiday' : ''}`}
+                  title={hol ? hol.name : undefined}
                   data-drop
                   data-day={d.key}
                   onClick={() => onSelect(d.key)}
@@ -152,6 +174,7 @@ function MonthView({ cursor, selected, onSelect, todayKey, data, store, desktop,
                   aria-label={`${d.date.getDate()} de ${MONTHS_LONG[d.date.getMonth()]}${all.length ? `, ${all.length} itens` : ''}`}
                 >
                   <span className="mcell-num">{d.date.getDate()}</span>
+                  {desktop && hol && <span className="mcell-hol">{hol.name}</span>}
                   {desktop ? (
                     <div className="mcell-items">
                       {all.slice(0, max).map((x) =>
@@ -180,9 +203,51 @@ function MonthView({ cursor, selected, onSelect, todayKey, data, store, desktop,
 /* ------------------------------------------------------------------ */
 /* Grade de horários (semana, 3 dias, dia)                             */
 /* ------------------------------------------------------------------ */
-function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEvent, onCreate, onPickDay, hover, unscheduled }) {
-  const HOUR = desktop ? 52 : 48;
+function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEvent, onCreate, onPickDay, hover, unscheduled, HOUR, setHour }) {
   const scrollRef = useRef(null);
+  const settings = store.settings;
+  const hourRef = useRef(HOUR);
+  hourRef.current = HOUR;
+  const setHourRef = useRef(setHour);
+  setHourRef.current = setHour;
+
+  // Zoom: Ctrl + rolagem no computador, pinça com dois dedos no celular
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return undefined;
+    const clamp = (v) => Math.max(28, Math.min(128, Math.round(v)));
+    const onWheel = (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      setHourRef.current((h) => clamp(h * (e.deltaY < 0 ? 1.1 : 0.9)));
+    };
+    // Pinça: eventos de toque (não são cancelados pela rolagem do navegador)
+    let base = null;
+    const spread = (e) => Math.abs(e.touches[0].clientY - e.touches[1].clientY) || 1;
+    const onStart = (e) => {
+      if (e.touches.length === 2) base = { d: spread(e), h: hourRef.current };
+    };
+    const onTouchMove = (e) => {
+      if (e.touches.length !== 2 || !base) return;
+      e.preventDefault();
+      setHourRef.current(clamp((base.h * spread(e)) / base.d));
+    };
+    const onEnd = (e) => {
+      if (e.touches.length < 2) base = null;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onEnd);
+    el.addEventListener('touchcancel', onEnd);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchcancel', onEnd);
+    };
+  }, []);
   const map = useMemo(() => itemsByDay(data, days[0], days[days.length - 1]), [data, days.join()]); // eslint-disable-line react-hooks/exhaustive-deps
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -209,8 +274,18 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
       const r = blockRange({ kind: 'task', task: t }, key);
       if (r) raw.push({ id: `t-${t.id}`, start: r[0], end: r[1], kind: 'task', task: t });
     }
+    // Hábitos com horário de lembrete aparecem como blocos leves (opcional nos Ajustes)
+    if (settings.calendarHabits) {
+      const d = fromKey(key);
+      for (const h of activeHabits(data)) {
+        if (!h.reminder || !isListed(h, d)) continue;
+        const s0 = minutesOf(h.reminder);
+        raw.push({ id: `h-${h.id}`, start: s0, end: s0 + Math.max(15, h.duration || 20), kind: 'habit', habit: h, done: countOf(data.log, key, h.id) >= h.target });
+      }
+    }
     return layoutBlocks(raw);
   };
+  const gapsFor = (key) => (settings.calendarGaps && key >= todayKey ? freeSlots(data, key, settings, key === todayKey ? now : null, 45) : []);
   const allDayFor = (key) => {
     const it = map.get(key) || { events: [], tasks: [] };
     return { events: it.events.filter((o) => o.ev.allDay || o.date !== key), tasks: it.tasks.filter((t) => !t.time) };
@@ -223,10 +298,12 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
           <span />
           {days.map((k) => {
             const d = fromKey(k);
+            const hol = holidayOf(settings, k);
             return (
-              <button key={k} type="button" className={`tg-day${k === todayKey ? ' is-today' : ''}`} onClick={() => onPickDay(k)}>
+              <button key={k} type="button" className={`tg-day${k === todayKey ? ' is-today' : ''}${hol ? ' is-holiday' : ''}`} onClick={() => onPickDay(k)} title={hol ? hol.name : undefined}>
                 <span className="tg-wd">{WD[d.getDay()]}</span>
                 <span className="tg-num">{d.getDate()}</span>
+                {hol && days.length <= 3 && <span className="tg-hol">{hol.name}</span>}
               </button>
             );
           })}
@@ -252,7 +329,7 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
             <div className="tg-hours" aria-hidden="true">
               {Array.from({ length: 23 }, (_, i) => (
                 <span key={i} style={{ top: (i + 1) * HOUR }}>
-                  {String(i + 1).padStart(2, '0')}:00
+                  {fmtTime(`${String(i + 1).padStart(2, '0')}:00`).replace(':00 ', ' ')}
                 </span>
               ))}
             </div>
@@ -263,15 +340,38 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
                 data-drop
                 data-slot-day={k}
                 onClick={(e) => {
-                  if (e.target !== e.currentTarget) return;
+                  if (e.target !== e.currentTarget && !e.target.classList.contains('gap')) return;
                   const r = e.currentTarget.getBoundingClientRect();
-                  onCreate({ date: k, time: hhmm(snap(((e.clientY - r.top) / HOUR) * 60)) });
+                  onCreate({ date: k, time: hhmm(snap(((e.clientY - r.top) / hourPx(e.currentTarget)) * 60)) });
                 }}
               >
+                {gapsFor(k).map((g) => (
+                  <div key={`g${g.start}`} className="gap" style={{ top: (g.start / 60) * HOUR, height: ((g.end - g.start) / 60) * HOUR - 2 }} aria-hidden="true">
+                    {(g.end - g.start) / 60 * HOUR > 30 && <span>Livre · {fmtMinutes(g.end - g.start)}</span>}
+                  </div>
+                ))}
                 {blocksFor(k).map((b) => {
                   const top = (b.start / 60) * HOUR;
                   const height = Math.max(18, ((b.end - b.start) / 60) * HOUR - 2);
                   const style = { top, height, left: `calc(${(b.col / b.cols) * 100}% + 2px)`, width: `calc(${100 / b.cols}% - 4px)` };
+                  if (b.kind === 'habit') {
+                    const h = b.habit;
+                    return (
+                      <div
+                        key={b.id}
+                        className={`blk is-habit${b.done ? ' is-done' : ''}${height < 34 ? ' is-short' : ''}`}
+                        style={{ ...style, '--c': colorOf(h.color).value }}
+                        onClick={() => k === todayKey && store.habits.toggle(h, k)}
+                        role="button"
+                        tabIndex={0}
+                        title={k === todayKey ? 'Tocar para marcar' : h.name}
+                      >
+                        <span className="blk-title">
+                          <Icon name={b.done ? 'CircleCheck' : h.icon} size={13} /> {h.name}
+                        </span>
+                      </div>
+                    );
+                  }
                   if (b.kind === 'event') {
                     const ev = b.occ.ev;
                     return (
@@ -286,7 +386,7 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
                       >
                         <span className="blk-title">{ev.title}</span>
                         <span className="blk-time">
-                          {hhmm(b.start)}–{hhmm(b.end % 1440)}
+                          {fmtTime(hhmm(b.start))}–{fmtTime(hhmm(b.end % 1440))}
                           {ev.location ? `, ${ev.location}` : ''}
                         </span>
                       </div>
@@ -307,13 +407,13 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
                         <TaskCheck checked={t.done} priority={t.priority} size={14} onToggle={() => store.tasks.toggle(t.id)} label={`Concluir ${t.title}`} />
                         {t.title}
                       </span>
-                      {height >= 34 && <span className="blk-time">{t.time}</span>}
+                      {height >= 34 && <span className="blk-time">{fmtTime(t.time)}</span>}
                     </div>
                   );
                 })}
                 {hover && hover.day === k && (
                   <div className="blk-preview" style={{ top: (hover.min / 60) * HOUR, height: Math.max(18, (hover.len / 60) * HOUR - 2) }}>
-                    {hhmm(hover.min)}
+                    {fmtTime(hhmm(hover.min))}
                   </div>
                 )}
                 {k === todayKey && (
@@ -346,6 +446,51 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
 }
 
 /* ------------------------------------------------------------------ */
+/* Ano: 12 meses pequenos com a intensidade de cada dia                */
+/* ------------------------------------------------------------------ */
+function YearView({ year, todayKey, data, settings, onPickDay }) {
+  const { map, max } = useMemo(() => yearActivity(data, year), [data, year]);
+  const order = weekOrder();
+  return (
+    <div className="year">
+      {Array.from({ length: 12 }, (_, m) => {
+        const grid = monthGrid(year, m);
+        const rows = grid.slice(35).some((d) => d.inMonth) ? 42 : 35;
+        return (
+          <section key={m} className="ymonth" aria-label={MONTHS_LONG[m]}>
+            <h3 className="ymonth-title">{MONTHS_LONG[m]}</h3>
+            <div className="ymonth-wd" aria-hidden="true">
+              {order.map((i) => (
+                <span key={i}>{WD[i][0].toUpperCase()}</span>
+              ))}
+            </div>
+            <div className="ymonth-grid">
+              {grid.slice(0, rows).map((d) => {
+                if (!d.inMonth) return <span key={d.key} className="yday is-out" />;
+                const v = map.get(d.key) || 0;
+                const level = v ? Math.min(4, Math.ceil((v / max) * 4)) : 0;
+                const hol = holidayOf(settings, d.key);
+                return (
+                  <button
+                    key={d.key}
+                    type="button"
+                    className={`yday l${level}${d.key === todayKey ? ' is-today' : ''}${hol ? ' is-holiday' : ''}`}
+                    onClick={() => onPickDay(d.key)}
+                    title={`${d.date.getDate()} de ${MONTHS_LONG[m]}${hol ? ` · ${hol.name}` : ''}`}
+                  >
+                    {d.date.getDate()}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Lista (próximos 30 dias)                                            */
 /* ------------------------------------------------------------------ */
 function AgendaList({ todayKey, data, store, onOpenTask, onOpenEvent, onCreate }) {
@@ -372,6 +517,17 @@ export function CalendarView({ store, todayKey, desktop, onOpenTask, onOpenEvent
   const [selected, setSelected] = useState(todayKey);
   const [dir, setDir] = useState(0);
   const [hover, setHover] = useState(null);
+  const [HOUR, setHourState] = useState(() => loadZoom(desktop));
+  const setHour = (fn) =>
+    setHourState((h) => {
+      const v = typeof fn === 'function' ? fn(h) : fn;
+      try {
+        localStorage.setItem(ZOOM_KEY, String(v));
+      } catch (e) {
+        /* sem storage */
+      }
+      return v;
+    });
   const span = mode === 'week' ? (desktop ? 7 : 3) : 1;
 
   const setMode = (m) => {
@@ -384,7 +540,7 @@ export function CalendarView({ store, todayKey, desktop, onOpenTask, onOpenEvent
   };
 
   const days = useMemo(() => {
-    if (mode === 'week' && desktop) return rangeDays(keyOf(addDays(fromKey(cursor), -fromKey(cursor).getDay())), 7);
+    if (mode === 'week' && desktop) return rangeDays(keyOf(weekStartOf(fromKey(cursor))), 7);
     if (mode === 'week') return rangeDays(cursor, 3);
     return [cursor];
   }, [mode, cursor, desktop]);
@@ -392,7 +548,8 @@ export function CalendarView({ store, todayKey, desktop, onOpenTask, onOpenEvent
   const step = (n) => {
     setDir(n);
     const c = fromKey(cursor);
-    if (mode === 'month') {
+    if (mode === 'year') setCursor(keyOf(new Date(c.getFullYear() + n, 0, 1)));
+    else if (mode === 'month') {
       const d = new Date(c.getFullYear(), c.getMonth() + n, 1);
       setCursor(keyOf(d));
       setSelected(keyOf(d.getMonth() === fromKey(todayKey).getMonth() && d.getFullYear() === fromKey(todayKey).getFullYear() ? fromKey(todayKey) : d));
@@ -410,8 +567,7 @@ export function CalendarView({ store, todayKey, desktop, onOpenTask, onOpenEvent
     const t = e.target;
     const minutesAt = () => {
       const r = t.getBoundingClientRect();
-      const HOUR = desktop ? 52 : 48;
-      return snap(((e.y - e.offY - r.top) / HOUR) * 60);
+      return snap(((e.y - e.offY - r.top) / (r.height / 24)) * 60);
     };
     if (e.phase === 'move') {
       if (t && t.dataset.slotDay) setHover({ day: t.dataset.slotDay, min: minutesAt(), len: e.data.minutes || 30 });
@@ -437,7 +593,9 @@ export function CalendarView({ store, todayKey, desktop, onOpenTask, onOpenEvent
 
   const c = fromKey(cursor);
   const title =
-    mode === 'month'
+    mode === 'year'
+      ? String(c.getFullYear())
+      : mode === 'month'
       ? monthTitle(c)
       : mode === 'agenda'
         ? 'Próximos 30 dias'
@@ -445,8 +603,9 @@ export function CalendarView({ store, todayKey, desktop, onOpenTask, onOpenEvent
           ? `${fromKey(days[0]).getDate()} ${MONTHS_LONG[fromKey(days[0]).getMonth()].slice(0, 3)} – ${fromKey(days[days.length - 1]).getDate()} ${MONTHS_LONG[fromKey(days[days.length - 1]).getMonth()].slice(0, 3)}`
           : `${dayLabel(cursor, todayKey)}, ${c.getDate()} de ${MONTHS_LONG[c.getMonth()]}`;
 
-  const unscheduled = desktop && mode !== 'month' && mode !== 'agenda' ? data.tasks.filter((t) => !t.done && !t.date).slice(0, 30) : null;
-  const isCurrent = mode === 'month' ? cursor.slice(0, 7) === todayKey.slice(0, 7) && selected === todayKey : days.includes(todayKey);
+  const unscheduled = desktop && (mode === 'week' || mode === 'day') ? data.tasks.filter((t) => !t.done && !t.date).slice(0, 30) : null;
+  const isCurrent =
+    mode === 'year' ? cursor.slice(0, 4) === todayKey.slice(0, 4) : mode === 'month' ? cursor.slice(0, 7) === todayKey.slice(0, 7) && selected === todayKey : days.includes(todayKey);
 
   return (
     <div className={`cal is-${mode}`}>
@@ -468,6 +627,7 @@ export function CalendarView({ store, todayKey, desktop, onOpenTask, onOpenEvent
             { id: 'week', label: desktop ? 'Semana' : '3 dias' },
             { id: 'day', label: 'Dia' },
             { id: 'agenda', label: 'Lista' },
+            { id: 'year', label: 'Ano' },
           ]}
         />
         {mode !== 'agenda' && (
@@ -519,6 +679,21 @@ export function CalendarView({ store, todayKey, desktop, onOpenTask, onOpenEvent
           }}
           hover={hover}
           unscheduled={unscheduled}
+          HOUR={HOUR}
+          setHour={setHour}
+        />
+      )}
+      {mode === 'year' && (
+        <YearView
+          year={c.getFullYear()}
+          todayKey={todayKey}
+          data={data}
+          settings={store.settings}
+          onPickDay={(k) => {
+            setCursor(k);
+            setSelected(k);
+            setMode('month');
+          }}
         />
       )}
       {mode === 'agenda' && <AgendaList todayKey={todayKey} data={data} store={store} onOpenTask={onOpenTask} onOpenEvent={onOpenEvent} onCreate={onCreate} />}

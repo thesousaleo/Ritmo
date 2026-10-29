@@ -49,6 +49,9 @@ export function ManageSheet({ desktop, data, onClose, onOrder, onRestore, onAddB
   const [end, setEnd] = useState(keyOf(addDays(todayDate(), 6)));
   const breaks = (data.breaks || []).filter((b) => b.end >= todayKey).sort((a, b) => a.start.localeCompare(b.start));
   const validBreak = start && end && end >= start;
+  const [onlySome, setOnlySome] = useState(false);
+  const [picked, setPicked] = useState([]);
+  const togglePick = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   return (
     <Sheet desktop={desktop} title="Organizar" onClose={onClose} labelId="manage-title">
@@ -61,16 +64,21 @@ export function ManageSheet({ desktop, data, onClose, onOrder, onRestore, onAddB
       </section>
 
       <section className="field">
-        <span className="field-label">Pausas e férias</span>
-        <p className="field-hint">Durante uma pausa nada é cobrado: as sequências ficam congeladas e os lembretes param.</p>
+        <span className="field-label">Pausas, férias e modo viagem</span>
+        <p className="field-hint">Durante uma pausa nada é cobrado: as sequências ficam congeladas e os lembretes param. No modo viagem, escolha só os hábitos que não dá para manter fora de casa.</p>
         {breaks.length > 0 && (
           <ul className="break-list">
             {breaks.map((b) => (
               <li key={b.id}>
-                <Icon name="Palmtree" size={16} />
-                <span className="flex-1">
+                <Icon name={b.habitIds && b.habitIds.length ? 'Luggage' : 'Palmtree'} size={16} />
+                <span className="flex-1 min-w-0">
                   {shortDate(b.start)} a {shortDate(b.end)}
                   {b.start <= todayKey ? ' (em andamento)' : ''}
+                  {b.habitIds && b.habitIds.length > 0 && (
+                    <span className="block field-hint truncate">
+                      Só: {b.habitIds.map((id) => (byId.get(id) || { name: '?' }).name).join(', ')}
+                    </span>
+                  )}
                 </span>
                 <button type="button" className="btn-text sm" onClick={() => onRemoveBreak(b)}>
                   Remover
@@ -89,8 +97,33 @@ export function ManageSheet({ desktop, data, onClose, onOrder, onRestore, onAddB
             <input id="break-end" type="date" className="text-input" value={end} min={start || todayKey} onChange={(e) => setEnd(e.target.value)} />
           </label>
         </div>
-        <button type="button" className="btn-secondary self-start" disabled={!validBreak} onClick={() => onAddBreak(start, end)}>
-          <Icon name="Plus" size={16} /> Adicionar pausa
+        <div className="reminder-row">
+          <button type="button" className={`switch${onlySome ? ' is-on' : ''}`} role="switch" aria-checked={onlySome} onClick={() => setOnlySome((v) => !v)}>
+            <span className="switch-knob" />
+            <span className="sr-only">Modo viagem</span>
+          </button>
+          <span className="field-hint flex-1">{onlySome ? 'Modo viagem: pausar só alguns hábitos' : 'Pausar todos os hábitos'}</span>
+        </div>
+        {onlySome && (
+          <div className="set-chips p-0">
+            {active.map((h) => (
+              <button key={h.id} type="button" className={`chip-toggle${picked.includes(h.id) ? ' is-on' : ''}`} onClick={() => togglePick(h.id)}>
+                <Icon name={h.icon} size={13} /> {h.name}
+              </button>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          className="btn-secondary self-start"
+          disabled={!validBreak || (onlySome && !picked.length)}
+          onClick={() => {
+            onAddBreak(start, end, onlySome ? picked : []);
+            setPicked([]);
+            setOnlySome(false);
+          }}
+        >
+          <Icon name="Plus" size={16} /> {onlySome ? 'Ativar modo viagem' : 'Adicionar pausa'}
         </button>
       </section>
 

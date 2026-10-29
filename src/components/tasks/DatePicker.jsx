@@ -3,7 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Icon, EASE_OUT } from '../ui.jsx';
 import { keyOf, fromKey, addDays } from '../../lib/habits.js';
 import { monthGrid, monthTitle } from '../../lib/calendar.js';
-import { REPEAT_OPTIONS, reminderOptions, repeatText } from '../../lib/tasks.js';
+import { repeatChoices, reminderOptions } from '../../lib/tasks.js';
+import { weekOrder } from '../../lib/prefs.js';
+import { holidayOn } from '../../lib/holidays.js';
 
 const WD = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 const DURATIONS = [0, 15, 30, 45, 60, 90, 120];
@@ -37,9 +39,7 @@ export function DatePickerBody({ value, onChange, todayKey, onDone, allowDuratio
   // Lembrete fora das opções do modo atual (com/sem hora) volta para o mais próximo
   const reminderValue = reminders.some((o) => o.value === value.reminder) ? value.reminder : -1;
   // Repetição semanal por dias aparece como opção própria quando veio da entrada rápida
-  const repeatOptions = REPEAT_OPTIONS.some((o) => o.value === (value.repeat || ''))
-    ? REPEAT_OPTIONS
-    : [...REPEAT_OPTIONS, { value: value.repeat, label: repeatText(value.repeat) }];
+  const repeatOptions = repeatChoices(value.date || todayKey, value.repeat || '', true);
 
   return (
     <div className="dp">
@@ -65,8 +65,8 @@ export function DatePickerBody({ value, onChange, todayKey, onDone, allowDuratio
           </div>
         </div>
         <div className="dp-grid dp-wd" aria-hidden="true">
-          {WD.map((w, i) => (
-            <span key={i}>{w}</span>
+          {weekOrder().map((i) => (
+            <span key={i}>{WD[i]}</span>
           ))}
         </div>
         <AnimatePresence mode="popLayout" initial={false}>
@@ -82,7 +82,8 @@ export function DatePickerBody({ value, onChange, todayKey, onDone, allowDuratio
               <button
                 key={d.key}
                 type="button"
-                className={`dp-day${d.inMonth ? '' : ' is-out'}${d.key === value.date ? ' is-on' : ''}${d.key === todayKey ? ' is-today' : ''}`}
+                className={`dp-day${d.inMonth ? '' : ' is-out'}${d.key === value.date ? ' is-on' : ''}${d.key === todayKey ? ' is-today' : ''}${holidayOn(d.key) ? ' is-holiday' : ''}`}
+                title={holidayOn(d.key) ? holidayOn(d.key).name : undefined}
                 onClick={() => setDate(d.key)}
                 aria-label={d.key}
                 aria-pressed={d.key === value.date}

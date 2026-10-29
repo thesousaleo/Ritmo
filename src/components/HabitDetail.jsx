@@ -41,7 +41,52 @@ function NoteField({ initialText, label, onSave }) {
   );
 }
 
-export function HabitDetail({ desktop, habit, data, today, dayKey, onClose, onEdit, onNote }) {
+/** Parceiro de responsabilidade: a pessoa convidada vê a sequência e se o hábito foi feito hoje (só isso). */
+function PartnerField({ habit, data, store }) {
+  const [email, setEmail] = useState('');
+  const [state, setState] = useState({ busy: false, msg: '', error: false });
+  const partners = (data.partners || []).filter((p) => p.habitId === habit.id && store && p.ownerId === (store.user && store.user.id));
+  if (!store) return null;
+  const invite = async () => {
+    if (!email.includes('@')) return;
+    setState({ busy: true, msg: '', error: false });
+    const r = await store.habits.invitePartner(habit.id, email);
+    setState({ busy: false, msg: r.ok ? `${r.name} vai acompanhar este hábito.` : r.message, error: !r.ok });
+    if (r.ok) setEmail('');
+  };
+  return (
+    <section className="field" aria-labelledby="dh-partner">
+      <span id="dh-partner" className="field-label">
+        Parceiro de hábito
+      </span>
+      {!store.user ? (
+        <p className="field-hint">Entre na sua conta para convidar alguém a acompanhar este hábito.</p>
+      ) : (
+        <>
+          {partners.map((p) => (
+            <div key={p.partnerId} className="member-row">
+              <span className="mini-avatar lg">{(p.partnerName || p.partnerEmail || '?').charAt(0).toUpperCase()}</span>
+              <span className="min-w-0 flex-1 truncate">{p.partnerName || p.partnerEmail}</span>
+              <button type="button" className="icon-btn ghost sm" onClick={() => store.habits.removePartner(p)} aria-label={`Remover ${p.partnerEmail}`}>
+                <Icon name="X" size={16} />
+              </button>
+            </div>
+          ))}
+          <div className="invite-row">
+            <input className="text-input sm" type="email" value={email} placeholder="E-mail da conta Ritmo" onChange={(e) => setEmail(e.target.value)} aria-label="E-mail do parceiro" />
+            <button type="button" className="btn-secondary sm" disabled={state.busy || !email.includes('@')} onClick={invite}>
+              {state.busy ? 'Enviando…' : 'Convidar'}
+            </button>
+          </div>
+          <p className="field-hint">Ele vê só este hábito: a sequência e se você fez hoje. Nada de notas ou outros dados.</p>
+          {state.msg && <p className={state.error ? 'field-error' : 'notice'}>{state.msg}</p>}
+        </>
+      )}
+    </section>
+  );
+}
+
+export function HabitDetail({ desktop, habit, data, today, dayKey, onClose, onEdit, onNote, store }) {
   const h = habit;
   const c = colorOf(h.color);
   const todayKey = keyOf(today);
@@ -128,6 +173,7 @@ export function HabitDetail({ desktop, habit, data, today, dayKey, onClose, onEd
       </div>
 
       <NoteField key={`${h.id}|${dayKey}`} initialText={noteOf(data, dayKey, h.id)} label={noteLabel} onSave={(text) => onNote(h, dayKey, text)} />
+      {h.minimum && <p className="field-hint">Versão mínima: {h.minimum}</p>}
 
       <section className="field" aria-labelledby="dh-heat">
         <span id="dh-heat" className="field-label">
@@ -180,6 +226,8 @@ export function HabitDetail({ desktop, habit, data, today, dayKey, onClose, onEd
           ))}
         </div>
       </section>
+
+      <PartnerField habit={h} data={data} store={store} />
 
       {notes.length > 0 && (
         <section className="field" aria-labelledby="dh-notes">
