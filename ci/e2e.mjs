@@ -402,7 +402,9 @@ try {
   step = 'Escuro';
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.click('.rail button:has-text("Tarefas")');
-  await page.click('.trow:has-text("Revisar proposta") .trow-main');
+  await page.click('.lists-col .lp-item:has-text("Hoje")');
+  await page.waitForTimeout(300);
+  await page.locator('.trow .trow-main').first().click();
   await shot(page, '34-desk-escuro-tarefas');
   await page.click('.rail button:has-text("Agenda")');
   await shot(page, '35-desk-escuro-agenda');
