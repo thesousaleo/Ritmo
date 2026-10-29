@@ -295,3 +295,6 @@
 .set-tabs.is-side .set-tab.is-on svg { color: var(--accent); }
 @media (hover: hover) { .set-tabs.is-side .set-tab:not(.is-on):hover { background: color-mix(in oklab, var(--surface-2) 60%, transparent); } }
 .is-desktop .set-main { flex: 1; max-width: 640px; }
+/* Na página de Ajustes os campos ficam numa coluna flexível: altura fixa, sem esticar/encolher */
+.settings-page .text-input { flex: none; }
+.settings-page .field { gap: 8px; }
