@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ritmo_widget_bg">#F2FAFBF8</color>
+    <color name="ritmo_widget_ink">#131A16</color>
+    <color name="ritmo_widget_muted">#5A655F</color>
+    <color name="ritmo_widget_accent">#3450E6</color>
+    <color name="ritmo_icon_dark_bg">#131A16</color>
+    <color name="ritmo_icon_dark_fg">#8197FF</color>
+    <color name="ritmo_icon_mint_bg">#1FAA78</color>
+    <color name="ritmo_icon_mint_fg">#FFFFFF</color>
+    <color name="ritmo_icon_sand_bg">#ECE3D3</color>
+    <color name="ritmo_icon_sand_fg">#131A16</color>
+    <string name="ritmo_widget_desc">Tarefas de hoje e hábitos do Ritmo</string>
+    <style name="RitmoWidgetRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/ritmo_widget_ink</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:paddingTop">3dp</item>
+        <item name="android:paddingBottom">3dp</item>
+    </style>
+</resources>

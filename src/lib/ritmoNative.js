@@ -88,7 +88,16 @@ export async function currentPosition() {
 
 /* ---------- diagnóstico de lembretes ---------- */
 export async function reminderDiagnostics() {
-  return call('diagnostics', {}, null);
+  const d = await call('diagnostics', {}, null);
+  if (!d) return null;
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    const p = await LocalNotifications.getPending();
+    d.pending = p.notifications.length;
+  } catch (e) {
+    /* sem contagem */
+  }
+  return d;
 }
 export const openBatterySettings = () => call('openBatterySettings', {}, null);
 export const openExactAlarmSettings = () => call('openExactAlarmSettings', {}, null);

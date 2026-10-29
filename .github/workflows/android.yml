@@ -54,14 +54,12 @@ jobs:
       - name: Sincronizar Capacitor
         run: ci/run.sh "cap sync" npx cap sync android
 
-      # Android 13+: notificações (lembretes e fim do temporizador) precisam desta permissão declarada
-      - name: Permissões de notificação
+      # Plugin próprio: widget, ícones alternativos, digital, voz, lugares e diagnóstico de lembretes.
+      # Também declara as permissões (notificações, alarmes exatos, localização, biometria).
+      - name: Plugin nativo do Ritmo
         run: |
-          M=android/app/src/main/AndroidManifest.xml
-          for P in POST_NOTIFICATIONS RECEIVE_BOOT_COMPLETED; do
-            grep -q "android.permission.$P" "$M" || sed -i "s#</manifest>#    <uses-permission android:name=\"android.permission.$P\" />\n</manifest>#" "$M"
-          done
-          grep uses-permission "$M"
+          ci/run.sh "Plugin nativo" python3 ci/android_native.py
+          grep -E "uses-permission|activity-alias|receiver" android/app/src/main/AndroidManifest.xml
 
       - name: Versão do APK
         run: |

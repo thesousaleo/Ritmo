@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ritmo_widget_bg">#F2171E1B</color>
+    <color name="ritmo_widget_ink">#EBF0EA</color>
+    <color name="ritmo_widget_muted">#97A29B</color>
+    <color name="ritmo_widget_accent">#8197FF</color>
+</resources>
