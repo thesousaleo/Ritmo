@@ -8,18 +8,31 @@ Rastreador de hábitos diários. A mesma base de código vira três coisas:
 
 ## Funções
 
-- **Hoje:** anel do dia, carrossel de dias, check animado, humor do dia, banner de pausa.
-- **Tipos de hábito:** construir ou evitar; todo dia, dias fixos ou N vezes por semana (sequência em semanas).
-- **Temporizador:** hábitos com duração abrem um timer que marca o hábito sozinho no fim, mesmo com o app fechado.
-- **Lembretes:** horário por hábito, com notificação local no APK (repete nos dias programados; para durante pausas).
-- **Pausas e férias:** períodos em que nada é cobrado e as sequências ficam congeladas.
-- **Detalhe do hábito:** sequência, recorde, taxa, mapa próprio, taxa por dia da semana, marcos e notas.
-- **Notas e humor:** nota curta por check-in; humor do dia de 1 a 5; a tela Consistência cruza humor e hábitos.
-- **Marcos:** 7, 30, 100 e 365 dias (4, 12, 26 e 52 semanas), com celebração quando acontece.
-- **Organizar:** reordenar arrastando, arquivar sem perder histórico, restaurar.
-- **Desfazer:** depois de excluir, arquivar, zerar contador ou remover pausa.
-- **Exportar:** histórico completo em CSV (separado por ponto e vírgula, abre no Excel).
-- **Resumo semanal por e-mail:** domingo às 19h, via Edge Function `weekly-summary` + pg_cron + Resend.
+**Tarefas**
+- Listas com cor e ícone, Entrada, visões Hoje, Amanhã, Próximos 7 dias, Todas, Concluídas e por etiqueta.
+- Subtarefas, descrição, etiquetas, prioridade (alta, média, baixa), data, hora, duração, repetição e lembrete.
+- Entrada rápida que entende português: “Reunião amanhã às 15h #trabalho !1 ^Pessoal”, “Academia toda segunda e quarta 7h”, “Pagar aluguel dia 5 todo mês”.
+- Concluir uma tarefa repetida cria o registro da conclusão e move a tarefa para a próxima data.
+- Kanban por lista, com colunas próprias e arrastar entre colunas.
+- No computador, arrastar uma tarefa para uma lista, etiqueta, Hoje ou Amanhã.
+
+**Agenda**
+- Eventos próprios (dia inteiro ou com horário, vários dias, repetição, lembrete, local, cor).
+- Visões de mês, semana (3 dias no celular), dia e lista dos próximos 30 dias, com tarefas e eventos juntos.
+- Arrastar para reagendar; clicar num horário vazio cria tarefa ou evento; tarefas sem data podem ser arrastadas para a grade.
+
+**Matriz e foco**
+- Matriz de Eisenhower ligada à prioridade: arrastar entre quadrantes muda a prioridade.
+- Pomodoro (foco, pausa curta e longa, rodadas configuráveis) e cronômetro, ligados a uma tarefa ou hábito, com sessões e estatísticas sincronizadas.
+
+**Hábitos** (continuam iguais)
+- Construir ou evitar; todo dia, dias fixos ou N vezes por semana; temporizador; lembretes; pausas; notas e humor; marcos; detalhe por hábito; resumo semanal por e-mail.
+- Os hábitos do dia também aparecem na visão Hoje das tarefas, junto da agenda do dia.
+
+**Geral**
+- Busca em tarefas, eventos e hábitos (tecla /).
+- Atalhos no computador: N novo item, 1 a 6 trocam de módulo, Esc fecha painéis.
+- Exportação do histórico em CSV; sincronização offline entre aparelhos.
 
 ## Resumo semanal por e-mail
 
@@ -33,7 +46,7 @@ A função `supabase/functions/weekly-summary` precisa do segredo `RESEND_API_KE
 - Os outros aparelhos recebem as mudanças em tempo real (Supabase Realtime) e também ao voltar para o app.
 - Cada pessoa só lê e grava os próprios registros (Row Level Security no Postgres).
 
-Banco: projeto Supabase `Ritmo` (sa-east-1). Tabelas `habits`, `checkins`, `moods` e `profiles`; o esquema está em `supabase/schema.sql`.
+Banco: projeto Supabase `Ritmo` (sa-east-1). Tabelas `habits`, `checkins`, `moods`, `profiles`, `lists`, `tasks`, `events` e `focus_sessions`; o esquema está em `supabase/schema.sql`.
 
 ## Desenvolvimento
 
@@ -50,31 +63,34 @@ APK local (precisa do Android Studio): `npm run android`.
 
 ```
 src/
-  App.jsx                 estado, sessão, sincronização, atalhos, Android (voltar, status bar)
+  App.jsx                 navegação, painéis abertos, teclado, botão voltar do Android
+  store.js                estado e ações: hábitos, tarefas, listas, agenda, foco, conta
   components/
-    Today.jsx             tela Hoje: anel segmentado, carrossel de dias, check animado
-    Stats.jsx             tela Consistência: heatmap, semana, sequências
-    HabitSheet.jsx        criar e editar hábito
-    HabitDetail.jsx       detalhe: estatísticas, nota, mapa, dias da semana, marcos
-    TimerSheet.jsx        temporizador
-    ManageSheet.jsx       reordenar, arquivados, pausas
-    Overlays.jsx          aviso com desfazer, celebração de marcos
-    AccountSheet.jsx      login, cadastro, nova senha, conta
-    Nav.jsx               tab bar (celular) e barra lateral (desktop)
-    ui.jsx                tokens de animação, Sheet responsivo, primitivos
+    Nav.jsx               trilho de módulos e painel de listas (computador), abas e gaveta (celular)
+    tasks/                TasksView, TaskRow, QuickAdd, TaskDetail, DatePicker, KanbanBoard, ListSheet
+    calendar/             CalendarView (mês, semana, dia, lista), EventSheet, CreateSheet
+    MatrixView.jsx        matriz de Eisenhower
+    FocusView.jsx         Pomodoro e cronômetro
+    SearchSheet.jsx       busca
+    Today.jsx, Stats.jsx, HabitSheet.jsx, HabitDetail.jsx, TimerSheet.jsx, ManageSheet.jsx   hábitos
+    AccountSheet.jsx, Overlays.jsx, ui.jsx
   lib/
-    habits.js             datas, regras, sequências, dados de exemplo
-    sync.js               fila offline + pull/push + realtime
-    native.js             lembretes, aviso do timer, exportação, tela acesa
-    supabase.js           cliente e mensagens de erro em português
-.github/workflows/
-  pages.yml               build e publicação no GitHub Pages
-  android.yml             build do APK e publicação em Releases
+    tasks.js              tarefas, visões, repetição, entrada rápida, matriz, Kanban, busca
+    calendar.js           grade do mês, ocorrências de eventos, blocos sobrepostos
+    focus.js              estado do Pomodoro e estatísticas
+    habits.js             regras de hábitos
+    data.js               estado completo, exemplos e armazenamento local
+    sync.js               fila offline + envio/leitura + tempo real
+    dnd.js                arrastar e soltar (mouse e toque)
+    native.js             lembretes, avisos, exportação
+ci/e2e.mjs                teste no navegador
+.github/workflows/        site (Pages), APK (Releases) e teste no navegador
 ```
 
-## Atalhos no computador
+## Testes
 
-`N` novo hábito · `1` Hoje · `2` Consistência · `Esc` fecha diálogos
+- `npm test`: regras de hábitos, tarefas, repetição, entrada rápida, agenda, foco e sincronização.
+- Workflow **Testar no navegador**: abre o app com Playwright em tamanho de celular e de computador, cria tarefas, arrasta itens no Kanban, na agenda e na matriz, confere o que foi gravado e publica capturas de tela no branch `ci-shots`.
 
 ## Assinatura do APK
 
