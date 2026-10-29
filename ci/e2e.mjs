@@ -196,6 +196,25 @@ try {
   await page.click('nav.tabbar button:has-text("Hábitos")');
   await page.waitForSelector('.ring');
   await shot(page, '12-celular-habitos');
+  // Diagnóstico: o que desenha um retângulo em volta do anel?
+  const ringDiag = await page.evaluate(() => {
+    const r = document.querySelector('.hsum .ring').getBoundingClientRect();
+    const at = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      return { tag: el.tagName, cls: String(el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className).slice(0, 60), outline: cs.outlineStyle + ' ' + cs.outlineWidth, border: cs.borderTopWidth, shadow: cs.boxShadow.slice(0, 60), bg: cs.backgroundColor };
+    };
+    const ae = document.activeElement;
+    return {
+      edge: at(r.left + 1, r.top + r.height / 2),
+      center: at(r.left + r.width / 2, r.top + r.height / 2),
+      active: ae ? `${ae.tagName}.${ae.className}`.slice(0, 80) : null,
+      selection: String(window.getSelection()).slice(0, 40),
+      ringOutline: getComputedStyle(document.querySelector('.hsum .ring')).outline,
+    };
+  });
+  checks.push({ name: 'diagnóstico do anel', ok: true, detail: JSON.stringify(ringDiag) });
   await page.click('button[aria-label="Mais opções de hábitos"]');
   await page.click('.menu-item:has-text("Dia difícil")');
   await page.waitForTimeout(300);
