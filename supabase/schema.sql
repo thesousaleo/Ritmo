@@ -94,3 +94,15 @@ create table private.app_secrets (name text primary key, value text not null);
 
 -- Domingo 22:00 UTC = 19:00 em Brasília
 -- select cron.schedule('ritmo-resumo-semanal', '0 22 * * 0', $$ select net.http_post(...) $$);
+
+-- ===================================================================
+-- v3 (migração ritmo_v3_planner): listas, tarefas, agenda e foco
+-- ===================================================================
+-- public.lists (user_id, id, name, color, icon, position, sections jsonb, view list|kanban, deleted, updated_at)
+-- public.tasks (user_id, id, list_id, title, notes, due_date, due_time, duration_min, priority 0-3, tags text[],
+--               repeat, reminder, checklist jsonb, section_id, position, done, completed_at, created_at, deleted, updated_at)
+-- public.events (user_id, id, title, notes, location, start_date, end_date, start_time, end_time, all_day, color,
+--                repeat, reminder, deleted, updated_at)
+-- public.focus_sessions (user_id, id, task_id, habit_id, started_at, minutes, kind pomo|stopwatch, deleted, updated_at)
+-- public.profiles.settings jsonb (ajustes do foco)
+-- Todas com RLS "dono lê/cria/altera/apaga", sem acesso anônimo e publicadas no realtime.

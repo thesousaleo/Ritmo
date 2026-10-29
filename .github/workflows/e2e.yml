@@ -1,0 +1,54 @@
+name: Testar no navegador
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: e2e
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Instalar dependências
+        run: ci/run.sh "npm install" npm install --no-audit --no-fund
+
+      - name: Build
+        run: ci/run.sh "Build web" npm run build
+        env:
+          VITE_BASE: ./
+
+      - name: Instalar navegador
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.48.2
+          npx playwright install --with-deps chromium
+
+      - name: Rodar fluxos
+        run: |
+          npx vite preview --port 4173 --strictPort > preview.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:4173/ > /dev/null && break; sleep 1; done
+          node ci/e2e.mjs
+
+      - name: Publicar capturas no branch ci-shots
+        if: always()
+        run: |
+          [ -d shots ] || exit 0
+          cd shots
+          echo "${{ github.sha }}" > COMMIT
+          git init -q
+          git checkout -q -b ci-shots
+          git add -A
+          git -c user.name="ritmo-ci" -c user.email="ritmo-ci@users.noreply.github.com" commit -qm "Capturas de ${{ github.sha }}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ci-shots

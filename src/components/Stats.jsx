@@ -116,10 +116,12 @@ export function StatsView({ data, today, weeks = 18, onReset, onOpen, headerRigh
   return (
     <div className="stats">
       <div className="stats-header">
-        <PageHeader title="Consistência" subtitle="Como seus hábitos se sustentam ao longo das semanas">
+        <PageHeader title="Consistência" subtitle="Seus hábitos, tarefas e foco ao longo das semanas">
           {headerRight}
         </PageHeader>
       </div>
+
+      <ProductivityPanel data={data} today={today} />
 
       <section className="panel stats-heat" aria-labelledby="heat-title">
         <div className="panel-head">
@@ -329,14 +331,14 @@ export function StatsView({ data, today, weeks = 18, onReset, onOpen, headerRigh
           <AnimatePresence mode="wait" initial={false}>
             {!confirmReset ? (
               <motion.div key="note" className="flex flex-col gap-3" {...swapProps}>
-                <p>O histórico anterior a hoje é de exemplo, para você explorar o app. Seus registros de agora em diante são reais.</p>
+                <p>As tarefas, eventos e o histórico que você vê são exemplos, para explorar o app. Quando quiser, comece do zero.</p>
                 <button type="button" className="btn-secondary self-start" onClick={() => setConfirmReset(true)}>
                   Começar do zero
                 </button>
               </motion.div>
             ) : (
               <motion.div key="confirm" className="flex flex-col gap-3" {...swapProps}>
-                <p>Isso apaga todo o histórico, notas e humor, inclusive nos outros aparelhos, e mantém só os hábitos cadastrados. Não dá para desfazer.</p>
+                <p>Isso apaga o histórico de hábitos, humor e foco e as tarefas e eventos de exemplo, inclusive nos outros aparelhos. Os hábitos e as listas continuam. Não dá para desfazer.</p>
                 {resetError && <p className="field-error">{resetError}</p>}
                 <div className="flex gap-2">
                   <button type="button" className="btn-secondary" onClick={() => setConfirmReset(false)} disabled={resetting}>
@@ -352,5 +354,53 @@ export function StatsView({ data, today, weeks = 18, onReset, onOpen, headerRigh
         </section>
       )}
     </div>
+  );
+}
+
+/** Tarefas concluídas e minutos de foco nos últimos 7 dias. */
+function ProductivityPanel({ data, today }) {
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = addDays(today, -i);
+    const k = keyOf(d);
+    const done = (data.tasks || []).filter((t) => t.done && t.completedAt && keyOf(new Date(t.completedAt)) === k).length;
+    const focus = (data.focus || []).filter((f) => keyOf(new Date(f.startedAt)) === k).reduce((n, f) => n + f.minutes, 0);
+    days.push({ k, d, done, focus });
+  }
+  const totalDone = days.reduce((n, x) => n + x.done, 0);
+  const totalFocus = days.reduce((n, x) => n + x.focus, 0);
+  const maxDone = Math.max(3, ...days.map((x) => x.done));
+  const todayKey = keyOf(today);
+  const overdue = (data.tasks || []).filter((t) => !t.done && t.date && t.date < todayKey).length;
+  return (
+    <section className="panel stats-prod" aria-labelledby="prod-title">
+      <div className="panel-head">
+        <h2 id="prod-title">Produtividade</h2>
+        <span className="section-count">últimos 7 dias</span>
+      </div>
+      <div className="prod-row">
+        <div className="prod-nums">
+          <p className="mid-num">
+            {totalDone}
+            <span className="mid-unit">tarefas concluídas</span>
+          </p>
+          <p className="mid-num sm">
+            {totalFocus >= 60 ? `${Math.floor(totalFocus / 60)}h${totalFocus % 60 ? String(totalFocus % 60).padStart(2, '0') : ''}` : `${totalFocus}min`}
+            <span className="mid-unit">de foco</span>
+          </p>
+          {overdue > 0 && <p className="prod-late">{overdue} {overdue === 1 ? 'tarefa atrasada' : 'tarefas atrasadas'}</p>}
+        </div>
+        <div className="bars" aria-label="Tarefas concluídas por dia">
+          {days.map((x, i) => (
+            <div key={x.k} className="bar-col">
+              <span className="bar-track">
+                <motion.span className="bar-fill" initial={{ scaleY: 0 }} animate={{ scaleY: x.done / maxDone }} transition={{ ...SPRING.progress, delay: i * 0.03 }} />
+              </span>
+              <span className={`bar-label${x.k === todayKey ? ' is-today' : ''}`}>{WEEKDAY_LETTER[x.d.getDay()]}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }

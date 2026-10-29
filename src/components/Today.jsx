@@ -357,7 +357,7 @@ function MoodPicker({ value, onChange, isToday }) {
 /* ------------------------------------------------------------------ */
 /* Tela Hoje                                                           */
 /* ------------------------------------------------------------------ */
-export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onOpen, onCreate, onManage, onMood, onEndBreak, timer, headerRight }) {
+export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onOpen, onCreate, onManage, onMood, onEndBreak, timer, headerRight, title }) {
   const selectedDate = fromKey(selectedKey);
   const isToday = selectedKey === keyOf(today);
   const active = activeHabits(data);
@@ -393,7 +393,7 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onO
     <div className="today">
       <div className="today-side">
         <PageHeader
-          title={`${greetingFor(new Date())}${data.name ? `, ${data.name}` : ''}`}
+          title={title || `${greetingFor(new Date())}${data.name ? `, ${data.name}` : ''}`}
           subtitle={isToday ? `Hoje, ${fmtLong.format(selectedDate)}` : fmtLong.format(selectedDate)}
         >
           <AnimatePresence initial={false}>

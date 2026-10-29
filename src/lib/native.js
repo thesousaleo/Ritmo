@@ -4,12 +4,16 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { isWeekly, inBreak, keyOf, todayDate } from './habits.js';
+import { reminderAt } from './tasks.js';
+import { eventOccurrences } from './calendar.js';
 
 export const isNative = Capacitor.isNativePlatform();
 export const remindersSupported = isNative;
 
 const CHANNEL = 'lembretes';
 const TIMER_ID = 9;
+const FOCUS_ID = 10;
+const MAX_ONE_SHOT = 150;
 
 // IDs estáveis por hábito e dia da semana: 1000 + (hash % 100000) * 7 + dia
 function hashId(s) {
@@ -18,6 +22,27 @@ function hashId(s) {
   return Math.abs(h) % 100000;
 }
 const reminderId = (habitId, weekday) => 1000 + hashId(habitId) * 7 + weekday;
+const oneShotId = (key) => 1_000_000 + (hashId(key) % 900_000) * 2;
+
+/** Lembretes únicos de tarefas e eventos para os próximos 21 dias. */
+export function upcomingReminders(data, now = new Date()) {
+  const horizon = new Date(now.getTime() + 21 * 86400000);
+  const out = [];
+  for (const t of data.tasks || []) {
+    if (t.done || t.reminder < 0 || !t.date) continue;
+    const at = reminderAt(t.date, t.time, t.reminder);
+    if (at && at > now && at < horizon) out.push({ id: oneShotId(`t|${t.id}|${t.date}`), at, title: t.title, body: t.time ? `Às ${t.time}` : 'Para hoje', extra: { taskId: t.id } });
+  }
+  const fromK = keyOf(now);
+  const toK = keyOf(horizon);
+  for (const o of eventOccurrences((data.events || []).filter((e) => e.reminder >= 0), fromK, toK)) {
+    const ev = o.ev;
+    const at = reminderAt(o.date, ev.allDay ? '' : ev.start, ev.reminder);
+    if (at && at > now && at < horizon)
+      out.push({ id: oneShotId(`e|${o.id}`), at, title: ev.title, body: ev.allDay ? 'Hoje, dia inteiro' : `Às ${ev.start}${ev.location ? `, ${ev.location}` : ''}`, extra: { eventId: ev.id, date: o.date } });
+  }
+  return out.sort((a, b) => a.at - b.at).slice(0, MAX_ONE_SHOT);
+}
 
 let channelReady = false;
 async function ensureChannel() {
@@ -49,7 +74,8 @@ export async function notificationPermission(ask = false) {
 export async function syncReminders(data, { ask = false } = {}) {
   if (!isNative) return 'unsupported';
   const wanted = data.habits.filter((h) => !h.archived && h.reminder);
-  const perm = await notificationPermission(ask && wanted.length > 0);
+  const oneShots = upcomingReminders(data);
+  const perm = await notificationPermission(ask && (wanted.length > 0 || oneShots.length > 0));
   try {
     const pending = await LocalNotifications.getPending();
     const ours = pending.notifications.filter((n) => n.id >= 1000).map((n) => ({ id: n.id }));
@@ -57,11 +83,12 @@ export async function syncReminders(data, { ask = false } = {}) {
   } catch (e) {
     /* nada agendado */
   }
-  if (perm !== 'granted' || !wanted.length) return perm;
-  if (inBreak(data, keyOf(todayDate()))) return perm;
+  if (perm !== 'granted' || (!wanted.length && !oneShots.length)) return perm;
   await ensureChannel();
 
-  const notifications = [];
+  const notifications = oneShots.map((n) => ({ id: n.id, title: n.title, body: n.body, channelId: CHANNEL, schedule: { at: n.at, allowWhileIdle: true }, extra: n.extra }));
+  // Hábitos não lembram durante uma pausa
+  if (inBreak(data, keyOf(todayDate()))) wanted.length = 0;
   for (const h of wanted) {
     const [hour, minute] = h.reminder.split(':').map(Number);
     const days = isWeekly(h) ? [0, 1, 2, 3, 4, 5, 6] : h.days;
@@ -101,6 +128,26 @@ export async function cancelTimerDone() {
   if (!isNative) return;
   try {
     await LocalNotifications.cancel({ notifications: [{ id: TIMER_ID }] });
+  } catch (e) {
+    /* nada agendado */
+  }
+}
+
+/** Aviso de fim de foco ou pausa (Pomodoro). */
+export async function scheduleFocusEnd(title, body, endAt) {
+  if (!isNative) return;
+  try {
+    if ((await notificationPermission(true)) !== 'granted') return;
+    await ensureChannel();
+    await LocalNotifications.schedule({ notifications: [{ id: FOCUS_ID, title, body, channelId: CHANNEL, schedule: { at: new Date(endAt), allowWhileIdle: true } }] });
+  } catch (e) {
+    /* opcional */
+  }
+}
+export async function cancelFocusEnd() {
+  if (!isNative) return;
+  try {
+    await LocalNotifications.cancel({ notifications: [{ id: FOCUS_ID }] });
   } catch (e) {
     /* nada agendado */
   }

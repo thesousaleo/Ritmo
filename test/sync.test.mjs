@@ -99,9 +99,9 @@ test('upload de conta nova leva hábitos, check-ins, notas e humor', () => {
 
 /* ---------- motor com um cliente falso em memória ---------- */
 function fakeClient() {
-  const db = { habits: new Map(), checkins: new Map(), profiles: new Map(), moods: new Map() };
+  const db = { habits: new Map(), checkins: new Map(), profiles: new Map(), moods: new Map(), lists: new Map(), tasks: new Map(), events: new Map(), focus_sessions: new Map() };
   const keyFor = (table, r) =>
-    table === 'habits' ? `${r.user_id}|${r.id}` : table === 'checkins' ? `${r.user_id}|${r.habit_id}|${r.day}` : table === 'moods' ? `${r.user_id}|${r.day}` : r.user_id;
+    ['habits', 'lists', 'tasks', 'events', 'focus_sessions'].includes(table) ? `${r.user_id}|${r.id}` : table === 'checkins' ? `${r.user_id}|${r.habit_id}|${r.day}` : table === 'moods' ? `${r.user_id}|${r.day}` : r.user_id;
   const query = (table) => {
     const rows = () => [...db[table].values()];
     const q = {
