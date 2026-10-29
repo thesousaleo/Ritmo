@@ -298,3 +298,5 @@
 /* Na página de Ajustes os campos ficam numa coluna flexível: altura fixa, sem esticar/encolher */
 .settings-page .text-input { flex: none; }
 .settings-page .field { gap: 8px; }
+.set-menu .set-row { min-height: 60px; }
+.set-menu .sync-dot.inline { margin-right: 2px; }

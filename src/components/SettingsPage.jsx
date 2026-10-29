@@ -584,104 +584,127 @@ function Backups({ store }) {
 }
 
 /** Página de Ajustes (tela inteira): abas à esquerda no computador, faixa de abas fixa no topo no celular. */
-export function SettingsPage({ desktop, store, todayKey, onBack, initial = 'account', onSignedOut, headerRight }) {
-  const [page, setPage] = useState(initial || 'account');
-  const tabsRef = useRef(null);
+export function SettingsPage({ desktop, store, todayKey, onBack, initial = null, onSignedOut, backRef }) {
+  // Celular: lista vertical das seções; tocar numa abre as opções dela (voltar retorna à lista).
+  // Computador: a mesma lista fica à esquerda e as opções aparecem ao lado.
+  const [page, setPage] = useState(initial || (desktop ? 'account' : null));
+  const scrollTop = () => {
+    const sc = document.querySelector('.scroll');
+    if (sc) sc.scrollTo({ top: 0 });
+  };
+  const open = (id) => {
+    setPage(id);
+    scrollTop();
+  };
   const s = store.settings;
   const set = store.updateSettings;
   const data = store.data;
-  const cat = CATEGORIES.find((c) => c.id === page) || CATEGORIES[0];
+  const shown = page || (desktop ? 'account' : null);
+  const cat = CATEGORIES.find((c) => c.id === shown);
 
   useEffect(() => {
     if (initial) setPage(initial);
   }, [initial]);
 
-  // Aba ativa sempre visível na faixa de abas (celular)
-  useEffect(() => {
-    const box = tabsRef.current;
-    const el = box && box.querySelector('[aria-selected="true"]');
-    if (!desktop && el && box.scrollTo) box.scrollTo({ left: el.offsetLeft - box.clientWidth / 2 + el.clientWidth / 2, behavior: 'smooth' });
-  }, [page, desktop]);
-
-  const tabs = (
-    <div ref={tabsRef} className={`set-tabs${desktop ? ' is-side' : ''}`} role="tablist" aria-label="Seções dos ajustes">
+  const list = (
+    <div className={desktop ? 'set-tabs is-side' : 'set-group set-menu'} role="list" aria-label="Seções dos ajustes">
       {CATEGORIES.map((c) => (
         <button
           key={c.id}
           type="button"
-          role="tab"
-          aria-selected={page === c.id}
-          className={`set-tab${page === c.id ? ' is-on' : ''}`}
-          onClick={() => setPage(c.id)}
+          role="listitem"
+          aria-current={desktop && shown === c.id ? 'page' : undefined}
+          className={desktop ? `set-tab${shown === c.id ? ' is-on' : ''}` : 'set-row is-link'}
+          onClick={() => open(c.id)}
         >
-          <Icon name={c.icon} size={desktop ? 18 : 16} />
-          <span className="set-tab-label">{c.label}</span>
-          {c.id === 'account' && <span className={`sync-dot is-${store.syncStatus} inline`} aria-label={statusText(store.syncStatus)} />}
+          <Icon name={c.icon} size={18} className={desktop ? undefined : 'set-icon'} />
+          {desktop ? (
+            <span className="set-tab-label">{c.label}</span>
+          ) : (
+            <span className="set-text">
+              <span className="set-label">{c.label}</span>
+              <span className="set-hint">{c.id === 'account' ? `${statusText(store.syncStatus)}${store.user ? ` · ${store.user.email}` : ''}` : c.hint}</span>
+            </span>
+          )}
+          {c.id === 'account' && <span className={`sync-dot is-${store.syncStatus} inline`} aria-hidden="true" />}
+          {!desktop && <Icon name="ChevronRight" size={17} className="set-chev" />}
         </button>
       ))}
     </div>
   );
 
+  const options = cat && (
+    <motion.section
+      key={cat.id}
+      className="settings set-main"
+      aria-label={cat.label}
+      initial={{ opacity: 0, x: desktop ? 0 : 14, y: desktop ? 6 : 0 }}
+      animate={{ opacity: 1, x: 0, y: 0 }}
+      transition={{ duration: 0.18, ease: EASE_OUT }}
+    >
+      {desktop && (
+        <div className="set-main-head">
+          <h2>{cat.label}</h2>
+          <p className="set-hint">{cat.hint}</p>
+        </div>
+      )}
+      {cat.id === 'account' && (
+        <AccountPanel
+          user={store.user}
+          recovery={store.recovery}
+          name={data.name}
+          status={store.syncStatus}
+          hasPending={store.account.hasPending()}
+          weeklyEmail={!!data.weeklyEmail}
+          onRename={store.account.rename}
+          onLocalName={store.account.setLocalName}
+          onSyncNow={store.account.syncNow}
+          onSignOut={async () => {
+            await store.account.signOut();
+            if (onSignedOut) onSignedOut();
+          }}
+          onRecoveryDone={() => store.account.clearRecovery()}
+          onExport={store.account.exportCsv}
+          onWeeklyEmail={store.account.setWeeklyEmail}
+          onTestEmail={store.account.testEmail}
+        />
+      )}
+      {cat.id === 'look' && <Look s={s} set={set} />}
+      {cat.id === 'nav' && <Nav s={s} set={set} />}
+      {cat.id === 'time' && <Time s={s} set={set} todayKey={todayKey} />}
+      {cat.id === 'plan' && <Plan s={s} set={set} />}
+      {cat.id === 'places' && <Places s={s} set={set} />}
+      {cat.id === 'device' && <Device device={store.device} setDevice={store.setDevice} />}
+      {cat.id === 'reminders' && <Reminders data={data} />}
+      {cat.id === 'backup' && <Backups store={store} />}
+    </motion.section>
+  );
+
+  // Voltar: da seção para a lista; da lista para o app
+  const back = !desktop && page ? () => open(null) : onBack;
+  if (backRef) backRef.current = () => (!desktop && page ? (open(null), true) : false);
+  const title = !desktop && cat ? cat.label : 'Ajustes';
+
   return (
     <div className="settings-page">
       <header className="page-header">
         <div className="flex items-center gap-1 min-w-0">
-          {onBack && (
-            <button type="button" className="icon-btn ghost lead" onClick={onBack} aria-label="Voltar">
+          {back && (
+            <button type="button" className="icon-btn ghost lead" onClick={back} aria-label={!desktop && page ? 'Voltar para Ajustes' : 'Voltar'}>
               <Icon name="ChevronLeft" size={22} />
             </button>
           )}
-          <h1 className="greet">Ajustes</h1>
+          <h1 className="greet truncate">{title}</h1>
         </div>
-        <div className="flex items-center gap-2 flex-none">{headerRight}</div>
       </header>
-      <div className="set-layout">
-        {desktop ? <nav className="set-side">{tabs}</nav> : <div className="set-tabs-wrap">{tabs}</div>}
-        <motion.section
-          key={page}
-          className="settings set-main"
-          aria-label={cat.label}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.16, ease: EASE_OUT }}
-        >
-          {desktop && (
-            <div className="set-main-head">
-              <h2>{cat.label}</h2>
-              <p className="set-hint">{cat.hint}</p>
-            </div>
-          )}
-          {page === 'account' && (
-            <AccountPanel
-              user={store.user}
-              recovery={store.recovery}
-              name={data.name}
-              status={store.syncStatus}
-              hasPending={store.account.hasPending()}
-              weeklyEmail={!!data.weeklyEmail}
-              onRename={store.account.rename}
-              onLocalName={store.account.setLocalName}
-              onSyncNow={store.account.syncNow}
-              onSignOut={async () => {
-                await store.account.signOut();
-                if (onSignedOut) onSignedOut();
-              }}
-              onRecoveryDone={() => store.account.clearRecovery()}
-              onExport={store.account.exportCsv}
-              onWeeklyEmail={store.account.setWeeklyEmail}
-              onTestEmail={store.account.testEmail}
-            />
-          )}
-          {page === 'look' && <Look s={s} set={set} />}
-          {page === 'nav' && <Nav s={s} set={set} />}
-          {page === 'time' && <Time s={s} set={set} todayKey={todayKey} />}
-          {page === 'plan' && <Plan s={s} set={set} />}
-          {page === 'places' && <Places s={s} set={set} />}
-          {page === 'device' && <Device device={store.device} setDevice={store.setDevice} />}
-          {page === 'reminders' && <Reminders data={data} />}
-          {page === 'backup' && <Backups store={store} />}
-        </motion.section>
-      </div>
+      {desktop ? (
+        <div className="set-layout">
+          <nav className="set-side">{list}</nav>
+          {options}
+        </div>
+      ) : (
+        cat ? options : list
+      )}
     </div>
   );
 }

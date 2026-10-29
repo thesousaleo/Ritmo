@@ -92,12 +92,13 @@ export default function App() {
   // Ajustes é uma página inteira: null = fechada, ou a aba aberta
   const [settingsTab, setSettingsTab] = useState(null);
   const settingsOpen = !!settingsTab;
-  const openSettings = useCallback((tab = 'account') => setSettingsTab(tab), []);
+  const openSettings = useCallback((tab = null) => setSettingsTab(tab || 'menu'), []);
   const [ritual, setRitual] = useState(null); // 'plan' | 'shutdown' | 'review'
   const [whatNowOpen, setWhatNowOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [filterSheet, setFilterSheet] = useState(null); // { filter? }
   const scrollRef = useRef(null);
+  const settingsBackRef = useRef(null);
   const modules = store.settings.modules;
   const resolvedTheme = useAppearance(store.settings);
   const locked = useNativeBridges(store, todayKey);
@@ -203,7 +204,7 @@ export default function App() {
         setSearch(true);
       } else if (e.key === ',') {
         e.preventDefault();
-        setSettingsTab((t) => t || 'account');
+        setSettingsTab((t) => t || 'menu');
       } else {
         const m = visibleModules(uiRef.current.modules).find((x) => x.key === e.key);
         if (m) goModule(m.id);
@@ -224,7 +225,9 @@ export default function App() {
       else if (s.templatesOpen) setTemplatesOpen(false);
       else if (s.whatNowOpen) setWhatNowOpen(false);
       else if (s.ritual) setRitual(null);
-      else if (s.settingsOpen) setSettingsTab(null);
+      else if (s.settingsOpen) {
+        if (!(settingsBackRef.current && settingsBackRef.current())) setSettingsTab(null);
+      }
       else if (s.timerOpen) setTimerOpen(false);
       else if (s.create) setCreate(null);
       else if (s.eventSheet) setEventSheet(null);
@@ -290,7 +293,8 @@ export default function App() {
         desktop={desktop}
         store={store}
         todayKey={todayKey}
-        initial={settingsTab}
+        initial={settingsTab === 'menu' ? null : settingsTab}
+        backRef={settingsBackRef}
         onBack={desktop ? null : () => setSettingsTab(null)}
         onSignedOut={() => setSettingsTab('account')}
       />

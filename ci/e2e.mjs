@@ -222,15 +222,21 @@ try {
   await page.waitForTimeout(300);
   await shot(page, '45-celular-insights');
 
-  // Ajustes pela engrenagem do topo (página inteira, com a aba Conta)
+  // Ajustes pela engrenagem do topo: lista vertical de seções, cada uma abre as opções
   step = 'Ajustes no celular';
   await page.click('button[aria-label^="Ajustes e conta"]');
-  await page.waitForSelector('.settings-page');
-  ok('engrenagem abre a página de Ajustes com Conta', (await page.locator('.set-tab.is-on:has-text("Conta")').count()) === 1 && (await page.locator('.settings-page input[type="email"]').count()) > 0);
-  await shot(page, '53-celular-ajustes-conta');
-  await page.click('.set-tab:has-text("Aparência")');
+  await page.waitForSelector('.set-menu');
+  ok('engrenagem abre a lista vertical de seções', (await page.locator('.set-menu .set-row').count()) >= 9);
+  await shot(page, '53-celular-ajustes-lista');
+  await page.click('.set-menu .set-row:has-text("Conta")');
   await page.waitForTimeout(300);
-  await shot(page, '54-celular-ajustes-aparencia');
+  ok('seção Conta mostra o login', (await page.locator('.settings-page input[type="email"]').count()) > 0);
+  await shot(page, '54-celular-ajustes-conta');
+  await page.click('button[aria-label="Voltar para Ajustes"]');
+  await page.click('.set-menu .set-row:has-text("Aparência")');
+  await page.waitForTimeout(300);
+  await shot(page, '55-celular-ajustes-aparencia');
+  await page.click('button[aria-label="Voltar para Ajustes"]');
   await page.click('button[aria-label="Voltar"]');
   await page.waitForTimeout(300);
 
