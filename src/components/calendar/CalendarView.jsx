@@ -760,6 +760,18 @@ export function CalendarView({ store: st, todayKey, desktop, onOpenTask, onOpenE
     };
   }, []);
 
+  // Qualquer interação com a agenda já dispensa a dica
+  const touched = useRef(false);
+  useEffect(() => {
+    if (!touched.current) {
+      touched.current = true;
+      return;
+    }
+    if (!hint) return;
+    setHint(false);
+    ls.set(HINT_KEY, '1');
+  }, [menu, mode, selected, cursor, folded]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const setMode = (m) => {
     setDir(0);
     if (isTimeMode(m) && !isTimeMode(mode)) setCursor(selected);
