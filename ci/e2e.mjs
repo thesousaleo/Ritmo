@@ -350,7 +350,7 @@ try {
   await mouseDrag(page, page.locator('.trow:has-text("Responder e-mails")'), page.locator('.lists-col .lp-item:has-text("Amanhã")'));
   const d3 = await store(page);
   const em = (d3.tasks || []).find((t) => t.id === 'ex-emails');
-  ok('arrastar para Amanhã muda a data', em && em.date > new Date().toISOString().slice(0, 10), em && em.date);
+  ok('arrastar para Amanhã muda a data', em && em.date > new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }), em && em.date);
 
   // Agenda semanal e arrastar bloco
   step = 'Agenda semanal e arrastar bloco';
