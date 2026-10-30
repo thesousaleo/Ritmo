@@ -369,3 +369,9 @@
 }
 .set-confirm p { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ink); }
 .set-confirm-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+
+/* Nova tarefa no celular: o texto ganha a linha inteira; data, prioridade, lista e enviar ficam embaixo */
+.qa.is-sheet .qa-row { flex-wrap: wrap; row-gap: 2px; padding: 6px 6px 6px 12px; }
+.qa.is-sheet .qa-input { flex: 1 1 calc(100% - 30px); }
+.qa.is-sheet .qa-tools { flex: 1 1 100%; margin-left: -8px; }
+.qa.is-sheet .qa-send { margin-left: auto; }

@@ -27,7 +27,7 @@ export function StatsView(props) {
   return (
     <div className="stats-wrap">
       <div className="stats-header">
-        <PageHeader title="Evolução" subtitle="Seus hábitos, tarefas e foco ao longo do tempo">
+        <PageHeader title="Evolução">
           {headerRight}
         </PageHeader>
         <div className="stats-tabs">

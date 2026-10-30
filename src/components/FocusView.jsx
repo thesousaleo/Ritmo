@@ -124,7 +124,7 @@ export function FocusView({ store, todayKey, desktop, headerRight }) {
 
   return (
     <div className="focus-page">
-      <PageHeader title="Foco" subtitle={isBreak ? 'Respire. A próxima rodada já vem.' : 'Uma coisa de cada vez.'}>
+      <PageHeader title="Foco">
         <button type="button" className={`icon-btn${ambient !== 'off' ? ' is-active' : ''}`} onClick={(e) => soundPop.open(e)} aria-label="Som ambiente">
           <Icon name={ambient !== 'off' ? 'Volume2' : 'VolumeX'} size={18} />
         </button>

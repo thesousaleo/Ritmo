@@ -36,7 +36,7 @@ export function MatrixView({ store, todayKey, desktop, onOpenTask, selectedId, h
 
   return (
     <div className="matrix-page">
-      <PageHeader title="Matriz" subtitle="Organize pelo que é urgente e pelo que é importante">
+      <PageHeader title="Matriz">
         {headerRight}
       </PageHeader>
       <div className="cal-bar">

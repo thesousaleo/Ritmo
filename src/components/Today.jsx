@@ -597,7 +597,7 @@ export function TodayView({ data, today, selectedKey, onSelectDay, onToggle, onO
   return (
     <div className="today is-clean">
       <div className="today-side">
-        <PageHeader title={title || 'Hábitos'} subtitle={isToday ? `Hoje, ${fmtLong.format(selectedDate)}` : fmtLong.format(selectedDate)}>
+        <PageHeader title={title || 'Hábitos'}>
           <AnimatePresence initial={false}>
             {!isToday && (
               <motion.button
