@@ -380,6 +380,7 @@
 .qa2-bar { display: flex; align-items: center; gap: 2px; margin: 6px -8px 0; }
 .qa2-bar .qa-tool { height: 44px; min-width: 44px; padding: 0 10px; justify-content: center; font-size: 13.5px; }
 .qa2-bar .qa-tool span { white-space: nowrap; }
+.qa2-bar .qa-tool svg { flex: none; }
 .qa2-list { max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
 .qa2-grow { flex: 1; }
 .qa2-bar .qa-send { width: 42px; height: 42px; margin-right: 4px; }
