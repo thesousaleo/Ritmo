@@ -370,8 +370,15 @@
 .set-confirm p { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ink); }
 .set-confirm-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
 
-/* Nova tarefa no celular: o texto ganha a linha inteira; data, prioridade, lista e enviar ficam embaixo */
-.qa.is-sheet .qa-row { flex-wrap: wrap; row-gap: 2px; padding: 6px 6px 6px 12px; }
-.qa.is-sheet .qa-input { flex: 1 1 calc(100% - 30px); }
-.qa.is-sheet .qa-tools { flex: 1 1 100%; margin-left: -8px; }
-.qa.is-sheet .qa-send { margin-left: auto; }
+/* Nova tarefa no celular: título e descrição soltos, ícones embaixo, microfone ou enviar à direita */
+.sheet.is-qa .sheet-grab { padding-bottom: 0; }
+.qa2 { display: flex; flex-direction: column; }
+.qa2-title { height: 44px; padding: 0 2px; border: 0; outline: none; background: transparent; color: var(--ink); font-size: 18px; font-weight: 600; }
+.qa2-title::placeholder, .qa2-notes::placeholder { color: var(--muted); font-weight: 450; opacity: 0.8; }
+.qa2 .qa-chips { padding: 2px 0 6px; }
+.qa2-notes { min-height: 28px; max-height: 150px; padding: 2px 2px 10px; border: 0; outline: none; resize: none; background: transparent; color: var(--ink); font: inherit; font-size: 15px; line-height: 1.45; }
+.qa2-bar { display: flex; align-items: center; gap: 2px; margin: 6px -8px 0; }
+.qa2-bar .qa-tool { height: 44px; min-width: 44px; padding: 0 10px; justify-content: center; font-size: 13.5px; }
+.qa2-list { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qa2-grow { flex: 1; }
+.qa2-bar .qa-send { width: 42px; height: 42px; margin-right: 4px; }

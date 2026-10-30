@@ -44,28 +44,6 @@ const loadUi = () => {
   }
 };
 
-function QuickAddHelp() {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="qa-help">
-      <button type="button" className="btn-link self-start" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <Icon name="CircleHelp" size={14} /> O que dá para escrever
-      </button>
-      {open && (
-        <ul className="qa-help-list">
-          <li><b>sexta 9h</b>, <b>dia 15</b>, <b>em 3 dias</b>: data e hora</li>
-          <li><b>todo quinto dia útil</b>, <b>toda última sexta</b>, <b>a cada 2 semanas na terça</b></li>
-          <li><b>3 dias depois de concluir</b>: repete a partir de quando você fizer</li>
-          <li><b>até sexta</b>: prazo final · <b>algum dia</b>: sem pressa</li>
-          <li><b>!1</b> prioridade · <b>#etiqueta</b> · <b>^lista</b> · <b>~leve</b> energia · <b>~30min</b></li>
-          <li><b>R$ 120</b>: valor da conta · <b>@agenda</b>: vira compromisso</li>
-          <li>Cole várias linhas para criar várias tarefas</li>
-        </ul>
-      )}
-    </div>
-  );
-}
-
 const blankHabit = () =>
   normalizeHabit({ id: '', name: '', icon: 'Sprout', color: 'cobalt', period: 'morning', days: ALL_DAYS, target: 1, unit: '', createdAt: keyOf(todayDate()) });
 
@@ -509,7 +487,7 @@ export default function App() {
 
         <AnimatePresence>
           {quickAdd && (
-            <Sheet key="qa" desktop={desktop} title="Nova tarefa" onClose={() => setQuickAdd(null)} className="is-compact">
+            <Sheet key="qa" desktop={desktop} title="Nova tarefa" onClose={() => setQuickAdd(null)} className="is-compact is-qa" header={<h2 id="sheet-title" className="sr-only">Nova tarefa</h2>}>
               <QuickAdd
                 data={data}
                 view={quickAdd.view}
@@ -526,7 +504,6 @@ export default function App() {
                   setQuickAdd(null);
                 }}
               />
-              <QuickAddHelp />
             </Sheet>
           )}
         </AnimatePresence>

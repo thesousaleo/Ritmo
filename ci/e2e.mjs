@@ -66,6 +66,7 @@ try {
   step = 'Entrada rápida pelo botão flutuante';
   await page.click('button.fab.is-float');
   await page.waitForSelector('.qa-input');
+  await page.fill('.qa2-notes', 'Marca de sempre');
   await page.fill('.qa-input', 'Comprar café amanhã 9h #casa !1');
   await shot(page, '02-celular-entrada-rapida');
   await page.keyboard.press('Enter');
@@ -73,6 +74,7 @@ try {
   const d1 = await store(page);
   const cafe = (d1.tasks || []).find((t) => t.title === 'Comprar café');
   ok('entrada rápida cria tarefa com data, hora, prioridade e etiqueta', cafe && cafe.time === '09:00' && cafe.priority === 3 && (cafe.tags || []).includes('casa') && !!cafe.date, JSON.stringify(cafe));
+  ok('entrada rápida guarda a descrição', cafe && cafe.notes === 'Marca de sempre', cafe && cafe.notes);
   // Entrada rápida: quinto dia útil + valor
   step = 'Entrada rápida: quinto dia útil + valor';
   await page.fill('.qa-input', 'Pagar aluguel todo quinto dia útil R$ 1.200');
