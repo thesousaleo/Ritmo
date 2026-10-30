@@ -1,0 +1,200 @@
+{
+  "checks": [
+    {
+      "name": "entrada rápida cria tarefa com data, hora, prioridade e etiqueta",
+      "ok": true,
+      "detail": "{\"listId\":\"inbox\",\"notes\":\"Marca de sempre\",\"date\":\"2026-10-31\",\"time\":\"09:00\",\"duration\":0,\"priority\":3,\"tags\":[\"casa\"],\"repeat\":\"\",\"reminder\":-1,\"checklist\":[],\"sectionId\":\"\",\"position\":15,\"done\":false,\"completedAt\":null,\"createdAt\":\"2026-10-30T10:59:51.792Z\",\"deadline\":\"\",\"someday\":false,\"postponed\":0,\"energy\":0,\"amount\":null,\"attachments\":[],\"nag\":false,\"place\":\"\",\"assignee\":null,\"ownerId\":null,\"id\":\"tmvuv1mk08v1tq\",\"title\":\"Comprar café\"}"
+    },
+    {
+      "name": "entrada rápida guarda a descrição",
+      "ok": true,
+      "detail": "Marca de sempre"
+    },
+    {
+      "name": "entrada rápida entende “todo quinto dia útil” e valor",
+      "ok": true,
+      "detail": "{\"r\":\"monthly:biz5\",\"a\":1200}"
+    },
+    {
+      "name": "colar várias linhas cria uma tarefa por linha",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "tarefa nova aparece em Amanhã",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "concluir pelo detalhe grava done",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "concluir na lista grava done",
+      "ok": true,
+      "detail": "Revisar proposta do cliente"
+    },
+    {
+      "name": "título da lista não fica sob os controles (celular)",
+      "ok": true,
+      "detail": "{\"tBox\":{\"x\":80,\"y\":13.796875,\"width\":117,\"height\":32.390625},\"cBox\":{\"x\":248,\"y\":54,\"width\":122,\"height\":38},\"hBox\":{\"x\":290,\"y\":12,\"width\":80,\"height\":36}}"
+    },
+    {
+      "name": "título da lista aparece inteiro (celular)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dica de voltar para hoje aparece na primeira visita",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "menu de visualização tem as 6 opções",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "3 dias mostra 3 colunas",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "semana mostra 7 colunas",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dia livre mostra o estado vazio",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "tocar no título volta para hoje",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "visão do ano mostra 12 meses",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Pomodoro conta o tempo",
+      "ok": true,
+      "detail": "24:58"
+    },
+    {
+      "name": "anel do dia sem contorno extra",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dia difícil fica gravado no dia",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "foco não fica preso no anel do dia",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "engrenagem abre a lista vertical de seções",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "seção Conta mostra o login",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "widgets: prévia segue opacidade e texto",
+      "ok": true,
+      "detail": "color(srgb 0.980392 0.984314 0.972549 / 0.4)"
+    },
+    {
+      "name": "widgets: lista os 6 tipos",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "remover exemplos tira só o que veio com o app",
+      "ok": true,
+      "detail": "5 tarefas minhas"
+    },
+    {
+      "name": "sem exemplos, a opção some",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "apagar tudo pede para digitar",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "apagar tudo zera hábitos, tarefas, agenda e registros",
+      "ok": true,
+      "detail": "{\"h\":0,\"t\":0,\"e\":0}"
+    },
+    {
+      "name": "entrada rápida (desktop) usa lista ^trabalho e prioridade !2",
+      "ok": true,
+      "detail": "{\"listId\":\"trabalho\",\"notes\":\"\",\"date\":\"2026-11-06\",\"time\":\"14:00\",\"duration\":0,\"priority\":2,\"tags\":[],\"repeat\":\"\",\"reminder\":-1,\"checklist\":[],\"sectionId\":\"\",\"position\":15,\"done\":false,\"completedAt\":null,\"createdAt\":\"2026-10-30T11:00:37.945Z\",\"deadline\":\"\",\"someday\":false,\"postponed\":0,\"energy\":0,\"amount\":null,\"attachments\":[],\"nag\":false,\"place\":\"\",\"assignee\":null,\"ownerId\":null,\"id\":\"tmvuv2m61u1joj\",\"title\":\"Revisar orçamento\"}"
+    },
+    {
+      "name": "arrastar no Kanban muda a coluna",
+      "ok": true,
+      "detail": "\"s-andamento\""
+    },
+    {
+      "name": "arrastar para Amanhã muda a data",
+      "ok": true,
+      "detail": "2026-10-31"
+    },
+    {
+      "name": "arrastar bloco na semana muda a hora",
+      "ok": true,
+      "detail": "12:00"
+    },
+    {
+      "name": "criar evento pela grade",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "arrastar na matriz muda a prioridade",
+      "ok": true,
+      "detail": "Revisar proposta do cliente"
+    },
+    {
+      "name": "Ajustes abre como página, na aba Conta",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ajuste de tema aplica o preto",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "modelo cria as tarefas",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "filtro aparece na barra de listas",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "busca encontra o evento",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "problems": []
+}
