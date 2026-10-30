@@ -873,11 +873,14 @@ export function SettingsPage({ desktop, store, todayKey, onBack, initial = null,
 }
 
 /** Botão de engrenagem do topo (celular), com o ponto do estado da sincronização. */
+/** A engrenagem só ganha um ponto quando há problema de sincronização (sem conexão ou erro). */
+export const syncTrouble = (status) => status === 'offline' || status === 'error';
+
 export function SettingsButton({ status, onClick }) {
   return (
     <button type="button" className="icon-btn ghost settings-btn" onClick={onClick} aria-label={`Ajustes e conta: ${statusText(status)}`}>
       <Icon name="Settings" size={20} />
-      <span className={`sync-dot is-${status}`} aria-hidden="true" />
+      {syncTrouble(status) && <span className={`sync-dot is-${status}`} aria-hidden="true" />}
     </button>
   );
 }

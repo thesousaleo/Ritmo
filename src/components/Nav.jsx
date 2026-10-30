@@ -74,7 +74,7 @@ export function Rail({ module, modules, onModule, onSearch, onSettings, settings
           {settingsOpen && <motion.span layoutId="rail-pill" className="rail-pill" transition={SPRING.indicator} />}
           <span className="rail-icon">
             <Icon name="Settings" size={20} strokeWidth={settingsOpen ? 2.3 : 1.9} />
-            <span className={`sync-dot is-${status}`} aria-hidden="true" />
+            {(status === 'offline' || status === 'error') && <span className={`sync-dot is-${status}`} aria-hidden="true" />}
           </span>
           <span className="rail-label">Ajustes</span>
         </button>
