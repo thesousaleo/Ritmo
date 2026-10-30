@@ -86,6 +86,80 @@ export function buildFullSeed(today = todayDate()) {
   return normalizeAll({ ...buildSeed(today), ...plannerSeed(today), settings: {} });
 }
 
+/* ---------- exemplos: separar o que veio com o app do que a pessoa criou ---------- */
+const SAMPLE_HABITS = ['agua', 'meditar', 'treino', 'caminhar', 'ler', 'tela'];
+const SAMPLE_SPAN = 130; // os exemplos de hábitos nascem 130 dias antes do dia em que o app foi aberto
+const isSampleId = (x) => typeof x.id === 'string' && x.id.startsWith('ex-') && !x.ownerId;
+
+/**
+ * Tira os exemplos (hábitos de exemplo com o histórico, tarefas, eventos, foco e o humor inventado),
+ * mantendo o que a pessoa criou. Devolve os dados limpos e os ids removidos (para apagar na conta).
+ */
+export function stripSample(d) {
+  const habits = (d.habits || []).filter((h) => SAMPLE_HABITS.includes(h.id) && !h.ownerId);
+  const habitIds = new Set(habits.map((h) => h.id));
+  const tasks = (d.tasks || []).filter(isSampleId).map((t) => t.id);
+  const events = (d.events || []).filter(isSampleId).map((e) => e.id);
+  const focus = (d.focus || []).filter(isSampleId).map((f) => f.id);
+  const keptTasks = (d.tasks || []).filter((t) => !isSampleId(t));
+  const lists = (d.lists || []).filter((l) => l.id === 'compras' && !l.ownerId && !keptTasks.some((t) => t.listId === 'compras')).map((l) => l.id);
+  // O humor de exemplo fica nos dias antes de o app ser aberto pela primeira vez
+  let moods = [];
+  if (habits.length && habits[0].createdAt) {
+    const seededOn = keyOf(addDays(new Date(`${habits[0].createdAt}T12:00:00`), SAMPLE_SPAN));
+    moods = Object.keys(d.moods || {}).filter((k) => k < seededOn);
+  }
+  const dropHabits = (byDay) => {
+    const out = {};
+    for (const [day, row] of Object.entries(byDay || {})) {
+      const kept = Object.fromEntries(Object.entries(row || {}).filter(([id]) => !habitIds.has(id)));
+      if (Object.keys(kept).length) out[day] = kept;
+    }
+    return out;
+  };
+  const moodSet = new Set(moods);
+  const data = {
+    ...d,
+    sample: false,
+    habits: (d.habits || []).filter((h) => !habitIds.has(h.id)),
+    log: dropHabits(d.log),
+    notes: dropHabits(d.notes),
+    minimal: dropHabits(d.minimal),
+    moods: Object.fromEntries(Object.entries(d.moods || {}).filter(([k]) => !moodSet.has(k))),
+    tasks: keptTasks,
+    events: (d.events || []).filter((e) => !isSampleId(e)),
+    focus: (d.focus || []).filter((f) => !isSampleId(f)),
+    lists: (d.lists || []).filter((l) => !lists.includes(l.id)),
+  };
+  const ids = { habits: [...habitIds], tasks, events, focus, lists, moods };
+  const count = ids.habits.length + tasks.length + events.length + focus.length + moods.length;
+  return { data, ids, count };
+}
+
+/** Tudo zerado: sem hábitos, registros, tarefas, agenda ou foco. Nome, ajustes e o que é compartilhado comigo ficam. */
+export function blankData(d) {
+  return normalizeAll({
+    name: d.name || '',
+    settings: d.settings || {},
+    weeklyEmail: !!d.weeklyEmail,
+    shares: d.shares,
+    partners: d.partners,
+    partnerHabits: d.partnerHabits,
+    sample: false,
+    habits: [],
+    log: {},
+    notes: {},
+    moods: {},
+    minimal: {},
+    days: {},
+    breaks: [],
+    lists: [...defaultLists(), ...(d.lists || []).filter((l) => l.ownerId)],
+    tasks: (d.tasks || []).filter((t) => t.ownerId),
+    events: [],
+    focus: [],
+  });
+}
+
 /* ---------- persistência local ---------- */
 const STORAGE_KEY = 'ritmo.v2';
 const LEGACY_KEY = 'ritmo.v1';

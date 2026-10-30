@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   countOf, keyOf, addDays, newHabitId, newBreakId, todayDate, normalizeHabit, currentStreak, milestonesOf, exportCsv, noteOf,
 } from './lib/habits.js';
-import { normalizeAll, buildFullSeed, loadLocal, saveLocal } from './lib/data.js';
+import { normalizeAll, buildFullSeed, loadLocal, saveLocal, stripSample, blankData } from './lib/data.js';
 import { normalizeTask, normalizeList, normalizeEvent, completeTask, newId, INBOX_ID } from './lib/tasks.js';
 import { settingsOf, applyPrefs, loadDevice, saveDevice } from './lib/settings.js';
 import { remoteId } from './lib/sync.js';
@@ -159,7 +159,14 @@ export function useRitmoStore() {
       if (id === userIdRef.current) return;
       const had = userIdRef.current;
       userIdRef.current = id;
-      if (id) engine.link(id, dataRef.current);
+      if (id) {
+        // Conta nova com os exemplos do app na tela: sobe só o que a pessoa criou, nunca os exemplos
+        const local = dataRef.current;
+        const mine = local.sample ? stripSample(local).data : local;
+        engine.link(id, mine).then((r) => {
+          if (r === 'uploaded' && dataRef.current.sample) commit(stripSample(dataRef.current).data);
+        });
+      }
       else if (had) {
         engine.unlink();
         commit(buildFullSeed());
@@ -987,6 +994,48 @@ export function useRitmoStore() {
       if (engine.linked) await engine.resetHistory(d.habits, t, profileOf(d));
       const cur = dataRef.current;
       commit({ ...cur, sample: false, log: {}, notes: {}, moods: {}, focus: [], tasks: [], events: [], habits: cur.habits.map((h) => ({ ...h, createdAt: t })) });
+    },
+    /** Quantos itens de exemplo (que vieram com o app) ainda existem. */
+    sampleCount: () => stripSample(dataRef.current).count,
+    /** Remove só os exemplos; guarda uma cópia em Backups antes. */
+    async removeSamples() {
+      const { ids, count } = stripSample(dataRef.current);
+      if (!count) return { ok: true, count: 0 };
+      if (engine.linked) {
+        try {
+          await engine.createBackup(backupPayload(dataRef.current));
+        } catch (e) {
+          /* segue sem a cópia */
+        }
+        try {
+          await engine.purge(ids);
+        } catch (e) {
+          return { ok: false, message: 'Não deu para apagar os exemplos na conta. Confira a conexão e tente de novo.' };
+        }
+      }
+      commit(stripSample(dataRef.current).data);
+      return { ok: true, count };
+    },
+    /** Zera tudo (aqui e na conta); guarda uma cópia em Backups antes. */
+    async wipeAll() {
+      let backedUp = false;
+      if (engine.linked) {
+        try {
+          await engine.createBackup(backupPayload(dataRef.current));
+          backedUp = true;
+        } catch (e) {
+          /* segue sem a cópia */
+        }
+        try {
+          await engine.wipe(profileOf({ ...dataRef.current, breaks: [] }));
+        } catch (e) {
+          return { ok: false, message: 'Não deu para terminar de apagar na conta. Confira a conexão e tente de novo.' };
+        }
+      }
+      const next = blankData(dataRef.current);
+      commit(next);
+      if (engine.linked) next.lists.filter((l) => !l.ownerId).forEach((l) => engine.queueList(l));
+      return { ok: true, backedUp };
     },
     hasPending: () => engine.hasPending(),
     clearRecovery: () => setRecovery(false),

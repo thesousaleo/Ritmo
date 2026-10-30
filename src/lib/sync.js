@@ -584,8 +584,26 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
     };
   }
 
+  async function purgeRows(ids) {
+    const TABLE = { tasks: 'tasks', focus: 'focus_sessions', events: 'events', moods: 'moods', habits: 'habits', lists: 'lists' };
+    // Tira da fila antes, para nada voltar a subir
+    for (const name of Object.keys(TABLE)) for (const id of ids[name] || []) delete pending[name][id];
+    const gone = new Set(ids.habits || []);
+    for (const k of Object.keys(pending.checkins)) if (gone.has(k.split('|')[0])) delete pending.checkins[k];
+    persist();
+    // Filhos antes dos pais; check-ins saem junto com o hábito (on delete cascade)
+    for (const name of ['tasks', 'focus', 'events', 'moods', 'habits', 'lists']) {
+      const list = ids[name] || [];
+      for (let i = 0; i < list.length; i += 150) {
+        const r = await client.from(TABLE[name]).delete().eq('user_id', userId).in(name === 'moods' ? 'day' : 'id', list.slice(i, i + 150));
+        if (r.error) throw r.error;
+      }
+    }
+  }
+
+  let holding = false; // apagando na conta: leituras no meio trariam um estado pela metade
   async function pull() {
-    if (!userId) return;
+    if (!userId || holding) return;
     const gen = generation;
     if (!hasPending()) setStatus('syncing');
     try {
@@ -767,6 +785,36 @@ export function createSyncEngine({ client, onSnapshot, onStatus }) {
       const { data: row, error } = await client.from('backups').select('data').eq('id', id).maybeSingle();
       if (error) throw error;
       return row ? row.data : null;
+    },
+    /** Apaga de vez linhas da conta: { habits, tasks, events, focus, lists: ids; moods: dias }. Precisa de conexão. */
+    async purge(ids) {
+      if (!userId) return;
+      generation++;
+      holding = true;
+      try {
+        await purgeRows(ids);
+      } finally {
+        holding = false;
+      }
+    },
+    /** Zera a conta: apaga hábitos, registros, listas, tarefas, agenda e foco. Perfil (nome, ajustes) fica. */
+    async wipe(profile) {
+      if (!userId) return;
+      generation++;
+      holding = true;
+      try {
+        pending = emptyPending();
+        persist();
+        for (const table of ['checkins', 'moods', 'focus_sessions', 'tasks', 'events', 'habits', 'lists']) {
+          const r = await client.from(table).delete().eq('user_id', userId);
+          if (r.error) throw r.error;
+        }
+      } finally {
+        holding = false;
+      }
+      pending.profile = profileRow(userId, profile);
+      persist();
+      await flush();
     },
     /** Apaga o histórico (check-ins, humor, foco, tarefas e eventos) na conta. Precisa de conexão. */
     async resetHistory(habits, todayKey, profile) {

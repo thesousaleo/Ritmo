@@ -273,6 +273,35 @@ try {
   await page.click('nav.tabbar button:has-text("Agenda")');
   await page.click('button[role="radio"]:has-text("Mês")');
   await shot(page, '15-celular-escuro-agenda');
+
+  // Apagar dados: primeiro só os exemplos (o que criei fica), depois tudo
+  step = 'Apagar dados';
+  await page.click('button[aria-label^="Ajustes e conta"]');
+  await page.click('.set-menu .set-row:has-text("Dados e backups")');
+  await page.click('.set-row:has-text("Remover os exemplos")');
+  await page.click('.set-confirm button:has-text("Remover exemplos")');
+  await page.waitForTimeout(400);
+  let st = await store(page);
+  const mine = (st.tasks || []).filter((t) => !t.ownerId);
+  ok(
+    'remover exemplos tira só o que veio com o app',
+    !(st.habits || []).some((h) => ['agua', 'meditar', 'treino', 'caminhar', 'ler', 'tela'].includes(h.id)) &&
+      !mine.some((t) => t.id.startsWith('ex-')) && mine.length > 0 && !(st.events || []).some((e) => e.id.startsWith('ex-')),
+    `${mine.length} tarefas minhas`
+  );
+  ok('sem exemplos, a opção some', (await page.locator('.set-row:has-text("Remover os exemplos")').count()) === 0);
+  await page.click('.set-row:has-text("Apagar todos os dados")');
+  ok('apagar tudo pede para digitar', await page.locator('.set-confirm button:has-text("Apagar tudo")').isDisabled());
+  await page.fill('.set-confirm input', 'apagar');
+  await shot(page, '57-celular-apagar-dados');
+  await page.click('.set-confirm button:has-text("Apagar tudo")');
+  await page.waitForTimeout(400);
+  st = await store(page);
+  ok(
+    'apagar tudo zera hábitos, tarefas, agenda e registros',
+    st.habits.length === 0 && st.tasks.length === 0 && st.events.length === 0 && Object.keys(st.log).length === 0 && st.lists.some((l) => l.id === 'inbox'),
+    JSON.stringify({ h: st.habits.length, t: st.tasks.length, e: st.events.length })
+  );
   await ctx.close();
 } catch (e) {
   if (curPage) await curPage.screenshot({ path: `${OUT}/99-falha-celular.png` }).catch(() => {});

@@ -58,7 +58,7 @@ const CATEGORIES = [
   { id: 'device', label: 'Aparelho', icon: 'Smartphone', hint: 'Sons, vibração, bloqueio e ícone' },
   { id: 'widgets', label: 'Widgets', icon: 'LayoutDashboard', hint: 'Tela inicial: tipos, fundo, cor e texto', android: true },
   { id: 'reminders', label: 'Lembretes', icon: 'BellRing', hint: 'Diagnóstico e permissões' },
-  { id: 'backup', label: 'Backups', icon: 'ArchiveRestore', hint: 'Cópias automáticas e restauração' },
+  { id: 'backup', label: 'Dados e backups', icon: 'ArchiveRestore', hint: 'Cópias, restauração e apagar dados' },
 ];
 
 // Widgets só existem no app Android (no site, ?widgets mostra a seção para conferir o visual)
@@ -666,6 +666,81 @@ function Backups({ store }) {
         </Group>
       )}
       {confirm && <p className="set-foot">Restaurar substitui seus dados atuais pelos dessa cópia em todos os aparelhos.</p>}
+      <EraseData store={store} onDone={refresh} />
+    </>
+  );
+}
+
+/* ---------- Apagar dados ---------- */
+function EraseData({ store, onDone }) {
+  const [ask, setAsk] = useState(null); // 'samples' | 'all'
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const linked = !!store.user;
+  const samples = store.account.sampleCount();
+  const close = () => {
+    setAsk(null);
+    setTyped('');
+  };
+  const run = async () => {
+    setBusy(true);
+    setMsg('');
+    const r = ask === 'all' ? await store.account.wipeAll() : await store.account.removeSamples();
+    setBusy(false);
+    close();
+    if (!r.ok) setMsg(r.message);
+    else if (ask === 'all') setMsg(linked ? 'Tudo apagado. Uma cópia de antes ficou em “Cópias na conta”, caso queira voltar.' : 'Tudo apagado.');
+    else setMsg(linked ? 'Exemplos removidos. Uma cópia de antes ficou em “Cópias na conta”.' : 'Exemplos removidos.');
+    if (onDone) onDone();
+  };
+  const word = 'apagar';
+  return (
+    <>
+      <Group title="Apagar dados">
+        {samples > 0 && (
+          <Row
+            label="Remover os exemplos"
+            hint="Hábitos com histórico, tarefas, eventos, foco e humor que já vinham no app. O que você criou continua."
+            onClick={() => setAsk(ask === 'samples' ? null : 'samples')}
+          />
+        )}
+        <Row
+          label={<span className="set-danger">Apagar todos os dados</span>}
+          hint={`Hábitos, registros, tarefas, listas, agenda, foco e diário${linked ? ', aqui e na conta' : ''}. Login e ajustes continuam.`}
+          onClick={() => setAsk(ask === 'all' ? null : 'all')}
+        />
+      </Group>
+      {ask && (
+        <div className="set-confirm" role="group" aria-label="Confirmar">
+          <p>
+            {ask === 'all'
+              ? `Isto apaga tudo o que você registrou no Ritmo${linked ? ' em todos os aparelhos' : ' neste aparelho'}.`
+              : `Isto remove ${samples} ${samples === 1 ? 'item' : 'itens'} de exemplo${linked ? ' em todos os aparelhos' : ''}.`}{' '}
+            {linked ? 'Antes, uma cópia é guardada em “Cópias na conta”, para desfazer se precisar.' : 'Sem conta, não dá para desfazer; se quiser, baixe o arquivo de backup antes.'}
+          </p>
+          {ask === 'all' && (
+            <input
+              className="text-input sm"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={`Digite “${word}” para confirmar`}
+              aria-label={`Digite ${word} para confirmar`}
+              autoCapitalize="none"
+              autoComplete="off"
+            />
+          )}
+          <div className="set-confirm-actions">
+            <button type="button" className="btn-link" onClick={close} disabled={busy}>
+              Cancelar
+            </button>
+            <button type="button" className="btn-danger sm" onClick={run} disabled={busy || (ask === 'all' && typed.trim().toLowerCase() !== word)}>
+              {busy ? 'Apagando…' : ask === 'all' ? 'Apagar tudo' : 'Remover exemplos'}
+            </button>
+          </div>
+        </div>
+      )}
+      {msg && <p className="set-foot">{msg}</p>}
     </>
   );
 }
