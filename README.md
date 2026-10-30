@@ -18,7 +18,9 @@ Rastreador de hábitos diários. A mesma base de código vira três coisas:
 
 **Agenda**
 - Eventos próprios (dia inteiro ou com horário, vários dias, repetição, lembrete, local, cor).
-- Visões de mês, semana (3 dias no celular), dia e lista dos próximos 30 dias, com tarefas e eventos juntos.
+- Seis visões no menu do cabeçalho, como no TickTick: Lista (mês compacto + itens do dia escolhido), Ano, Mês (grade cheia com os títulos), Semana, 3 Dias e Dia, com tarefas e eventos juntos.
+- Tocar no nome do mês volta para hoje; deslizar para os lados troca de mês, semana ou dias; na Lista, deslizar para cima mostra só a semana.
+- O botão + cria no dia escolhido na agenda.
 - Arrastar para reagendar; clicar num horário vazio cria tarefa ou evento; tarefas sem data podem ser arrastadas para a grade.
 
 **Matriz e foco**

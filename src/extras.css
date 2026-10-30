@@ -170,7 +170,7 @@
 /* ---------- agenda: feriados, horários livres, hábitos, ano ---------- */
 .hol-tag { display: inline-flex; align-items: center; margin-left: 8px; height: 22px; padding: 0 8px; border-radius: 7px; font-family: var(--font-body); font-size: 12px; font-weight: 650; color: var(--good); background: color-mix(in oklab, var(--good) 12%, transparent); vertical-align: middle; }
 .hol-tag.is-facultativo, .hol-tag.is-pessoal { color: var(--muted); background: var(--surface-2); }
-.mcell.is-holiday .mcell-num { color: var(--good); }
+.mcell.is-holiday:not(.is-selected) .mcell-num { color: var(--good); }
 .mcell-hol { font-size: 10.5px; font-weight: 650; color: var(--good); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
 .tg-day.is-holiday .tg-num { color: var(--good); }
 .tg-day.is-today.is-holiday .tg-num { color: var(--on-accent); }

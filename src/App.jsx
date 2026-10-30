@@ -64,6 +64,7 @@ export default function App() {
   const [listSheet, setListSheet] = useState(null); // { list? }
   const [eventSheet, setEventSheet] = useState(null); // evento (novo ou existente)
   const [create, setCreate] = useState(null); // { date, time }
+  const calDayRef = useRef(null); // dia em foco na agenda: o + cria nele
   const [search, setSearch] = useState(false);
   const [habitSheet, setHabitSheet] = useState(null);
   const [habitDetail, setHabitDetail] = useState(null);
@@ -215,7 +216,7 @@ export default function App() {
   const newItem = useCallback(() => {
     const m = uiRef.current.module;
     if (m === 'habits' || m === 'stats') setHabitSheet({ mode: 'create', habit: blankHabit() });
-    else if (m === 'calendar') setCreate({ date: keyOf(todayDate()) });
+    else if (m === 'calendar') setCreate({ date: calDayRef.current || keyOf(todayDate()) });
     else if (m === 'focus') return;
     else if (desktop && m === 'tasks') {
       const el = document.querySelector('.qa-input');
@@ -355,7 +356,7 @@ export default function App() {
       />
     );
   else if (module === 'calendar')
-    content = <CalendarView store={store} todayKey={todayKey} desktop={desktop} onOpenTask={openTask} onOpenEvent={openEvent} onCreate={(slot) => setCreate(slot)} headerRight={headerRight} />;
+    content = <CalendarView store={store} todayKey={todayKey} desktop={desktop} onOpenTask={openTask} onOpenEvent={openEvent} onCreate={(slot) => setCreate(slot)} headerRight={headerRight} onDayChange={(k) => (calDayRef.current = k)} />;
   else if (module === 'matrix') content = <MatrixView store={store} todayKey={todayKey} desktop={desktop} onOpenTask={openTask} selectedId={taskId} headerRight={headerRight} />;
   else if (module === 'focus') content = <FocusView store={store} todayKey={todayKey} desktop={desktop} headerRight={headerRight} />;
   else if (module === 'habits')

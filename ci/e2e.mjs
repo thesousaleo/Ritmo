@@ -39,6 +39,12 @@ const shot = async (page, file) => {
   await page.waitForTimeout(450);
   await page.screenshot({ path: `${OUT}/${file}.png` });
 };
+/** Troca a visão da agenda pelo menu do cabeçalho (Lista, Ano, Mês, Semana, 3 Dias, Dia). */
+const calView = async (page, name) => {
+  await page.click('.cal-view-btn');
+  await page.getByRole('menuitemradio', { name, exact: true }).click();
+  await page.waitForTimeout(250);
+};
 const store = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('ritmo.v2') || '{}'));
 const center = async (loc) => {
   const b = await loc.boundingBox();
@@ -165,13 +171,35 @@ try {
   step = 'Agenda';
   await page.click('nav.tabbar button:has-text("Agenda")');
   await page.waitForSelector('.cal');
-  await shot(page, '07-celular-agenda-mes');
-  await page.click('button[role="radio"]:has-text("3 dias")');
+  await page.waitForTimeout(600);
+  ok('dica de voltar para hoje aparece na primeira visita', await page.locator('.cal-hint').count());
+  await shot(page, '07-celular-agenda-lista');
+  await page.click('.cal-view-btn');
+  ok('menu de visualização tem as 6 opções', (await page.locator('.cal-menu [role="menuitemradio"]').count()) === 6);
+  await shot(page, '07b-celular-agenda-menu');
+  await page.keyboard.press('Escape');
+  await page.click('.cal-view-btn');
+  await page.getByRole('menuitemradio', { name: '3 Dias', exact: true }).click();
   await page.waitForSelector('.tg');
+  ok('3 dias mostra 3 colunas', (await page.locator('.tg-col').count()) === 3);
   await shot(page, '08-celular-agenda-3dias');
-  await page.click('button[role="radio"]:has-text("Lista")');
-  await shot(page, '09-celular-agenda-lista');
-  await page.click('button[role="radio"]:has-text("Ano")');
+  await calView(page, 'Semana');
+  ok('semana mostra 7 colunas', (await page.locator('.tg-col').count()) === 7);
+  await shot(page, '08b-celular-agenda-semana');
+  await calView(page, 'Mês');
+  await page.waitForSelector('.cal.is-month .month');
+  await shot(page, '09-celular-agenda-mes');
+  await calView(page, 'Lista');
+  // Dia sem nada: estado vazio
+  const freeDay = await page.evaluate(() => [...document.querySelectorAll('.mcell:not(.is-out)')].find((c) => !c.querySelector('.mcell-dots i'))?.dataset.day);
+  if (freeDay) {
+    await page.click(`.mcell[data-day="${freeDay}"]`);
+    ok('dia livre mostra o estado vazio', await page.locator('.day-empty').count());
+    await shot(page, '09b-celular-agenda-dia-livre');
+  }
+  await page.click('.cal-title');
+  ok('tocar no título volta para hoje', await page.locator('.mcell.is-today.is-selected').count());
+  await calView(page, 'Ano');
   await page.waitForSelector('.year');
   ok('visão do ano mostra 12 meses', (await page.locator('.ymonth').count()) === 12);
   await shot(page, '42-celular-agenda-ano');
@@ -273,7 +301,7 @@ try {
   await page.click('nav.tabbar button:has-text("Tarefas")');
   await shot(page, '14-celular-escuro-tarefas');
   await page.click('nav.tabbar button:has-text("Agenda")');
-  await page.click('button[role="radio"]:has-text("Mês")');
+  await calView(page, 'Mês');
   await shot(page, '15-celular-escuro-agenda');
 
   // Apagar dados: primeiro só os exemplos (o que criei fica), depois tudo
@@ -359,7 +387,7 @@ try {
   await page.click('.rail button:has-text("Agenda")');
   await page.waitForSelector('.cal');
   await shot(page, '25-desk-agenda-mes');
-  await page.click('button[role="radio"]:has-text("Semana")');
+  await calView(page, 'Semana');
   await page.waitForSelector('.tg-col');
   await shot(page, '26-desk-agenda-semana');
   // Rola a grade para as 8h: a posição inicial depende da hora em que o teste roda
@@ -378,7 +406,7 @@ try {
   } else ok('bloco da tarefa aparece na semana', false);
   // Criar evento clicando num horário vazio
   step = 'Criar evento clicando num horário vazio';
-  await page.click('button[role="radio"]:has-text("Dia")');
+  await calView(page, 'Dia');
   await page.waitForSelector('.tg-col');
   await page.evaluate(() => {
     document.querySelector('.tg-scroll').scrollTop = 52 * 18;
@@ -461,10 +489,10 @@ try {
   // Agenda: ano e foco em tela cheia
   step = 'Agenda: ano e foco em tela cheia';
   await page.click('.rail button:has-text("Agenda")');
-  await page.click('button[role="radio"]:has-text("Ano")');
+  await calView(page, 'Ano');
   await page.waitForSelector('.year');
   await shot(page, '52-desk-agenda-ano');
-  await page.click('button[role="radio"]:has-text("Mês")');
+  await calView(page, 'Lista');
 
   // Busca por teclado
   step = 'Busca por teclado';

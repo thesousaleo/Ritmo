@@ -1,10 +1,10 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Icon, Segmented, TaskCheck, EASE_OUT } from '../ui.jsx';
+import { Icon, Popover, Sheet, TaskCheck, EASE_OUT } from '../ui.jsx';
 import { PageHeader } from '../Today.jsx';
 import { TaskRow } from '../tasks/TaskRow.jsx';
 import { colorOf, keyOf, fromKey, addDays, activeHabits, isListed, countOf } from '../../lib/habits.js';
-import { monthGrid, monthTitle, rangeDays, itemsByDay, blockRange, layoutBlocks, snap, MONTHS_LONG, weekStartOf } from '../../lib/calendar.js';
+import { monthGrid, rangeDays, itemsByDay, blockRange, layoutBlocks, snap, MONTHS_LONG, weekStartOf } from '../../lib/calendar.js';
 import { dayLabel, hhmm, minutesOf, priorityOf } from '../../lib/tasks.js';
 import { dragProps, useDragMonitor } from '../../lib/dnd.js';
 import { holidayOn } from '../../lib/holidays.js';
@@ -14,28 +14,156 @@ import { yearActivity } from '../../lib/insights.js';
 import { fmtMinutes } from '../../lib/focus.js';
 
 const WD = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
-const MODE_KEY = 'ritmo.calmode';
+const VIEW_KEY = 'ritmo.calview';
+const OLD_MODE_KEY = 'ritmo.calmode';
+const FOLD_KEY = 'ritmo.calfold';
+const HINT_KEY = 'ritmo.calhint';
 const ZOOM_KEY = 'ritmo.calzoom';
+const MODES = ['list', 'year', 'month', 'week', 'three', 'day'];
+const MODE_LABEL = { list: 'Lista', year: 'Ano', month: 'Mês', week: 'Semana', three: '3 Dias', day: 'Dia' };
+const isTimeMode = (m) => m === 'week' || m === 'three' || m === 'day';
+
+const ls = {
+  get(k) {
+    try {
+      return localStorage.getItem(k);
+    } catch (e) {
+      return null;
+    }
+  },
+  set(k, v) {
+    try {
+      localStorage.setItem(k, v);
+    } catch (e) {
+      /* sem storage */
+    }
+  },
+};
 const loadZoom = (desktop) => {
-  try {
-    const v = Number(localStorage.getItem(ZOOM_KEY));
-    if (v >= 28 && v <= 128) return v;
-  } catch (e) {
-    /* sem storage */
-  }
+  const v = Number(ls.get(ZOOM_KEY));
+  if (v >= 28 && v <= 128) return v;
   return desktop ? 52 : 48;
+};
+/** Visão salva; a chave antiga (Mês/3 dias/Dia/Lista/Ano) vira a nova estrutura. */
+const loadMode = () => {
+  const v = ls.get(VIEW_KEY);
+  if (MODES.includes(v)) return v;
+  const old = ls.get(OLD_MODE_KEY);
+  if (old === 'week') return 'three';
+  if (old === 'day' || old === 'year') return old;
+  return 'list';
 };
 /** Altura de uma hora na tela, medida do próprio elemento (vale com zoom de texto e de pinça). */
 const hourPx = (el) => el.getBoundingClientRect().height / 24;
 const holidayOf = (settings, k) => (settings.showHolidays === false ? null : holidayOn(k));
-const loadMode = () => {
-  try {
-    return localStorage.getItem(MODE_KEY) || 'month';
-  } catch (e) {
-    return 'month';
-  }
-};
+const sameMonth = (a, b) => a.slice(0, 7) === b.slice(0, 7);
 
+/* ------------------------------------------------------------------ */
+/* Gesto de deslizar (um dedo): troca de mês, semana ou dias           */
+/* ------------------------------------------------------------------ */
+function useSwipe(ref, handlers, enabled = true) {
+  const h = useRef(handlers);
+  h.current = handlers;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !enabled) return undefined;
+    let s = null;
+    const onStart = (e) => {
+      s = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now(), dead: false } : null;
+    };
+    const onMove = (e) => {
+      if (!s) return;
+      // Dois dedos (pinça) ou arrasto de item: não é deslize
+      if (e.touches.length !== 1 || document.body.classList.contains('is-dragging')) s.dead = true;
+    };
+    const onEnd = (e) => {
+      if (!s || s.dead) return (s = null);
+      const t = e.changedTouches[0];
+      const dx = t.clientX - s.x;
+      const dy = t.clientY - s.y;
+      const fast = Date.now() - s.t < 600;
+      s = null;
+      if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.6) (dx < 0 ? h.current.left : h.current.right)?.();
+      else if (fast && Math.abs(dy) > 36 && Math.abs(dy) > Math.abs(dx) * 1.6) (dy < 0 ? h.current.up : h.current.down)?.();
+    };
+    const onCancel = () => (s = null);
+    el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchmove', onMove, { passive: true });
+    el.addEventListener('touchend', onEnd);
+    el.addEventListener('touchcancel', onCancel);
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchcancel', onCancel);
+    };
+  }, [ref, enabled]);
+}
+
+/* ------------------------------------------------------------------ */
+/* Ícones das visões                                                    */
+/* ------------------------------------------------------------------ */
+function ModeIcon({ mode, size = 22 }) {
+  const p = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  const frame = <rect x="3.5" y="3.5" width="17" height="17" rx="3.5" {...p} />;
+  const v = (x) => <line key={`v${x}`} x1={x} y1="3.5" x2={x} y2="20.5" {...p} />;
+  const hz = (y) => <line key={`h${y}`} x1="3.5" y1={y} x2="20.5" y2={y} {...p} />;
+  let body;
+  if (mode === 'list')
+    body = (
+      <>
+        <rect x="3.5" y="3.5" width="17" height="7" rx="2.5" {...p} />
+        <line x1="12" y1="3.5" x2="12" y2="10.5" {...p} />
+        <line x1="3.5" y1="15" x2="20.5" y2="15" {...p} />
+        <line x1="3.5" y1="19.5" x2="20.5" y2="19.5" {...p} />
+      </>
+    );
+  else if (mode === 'year') body = <>{frame}{[7.75, 12, 16.25].map(v)}{[7.75, 12, 16.25].map(hz)}</>;
+  else if (mode === 'month') body = <>{frame}{[9.17, 14.83].map(v)}{[9.17, 14.83].map(hz)}</>;
+  else if (mode === 'week') body = <>{frame}{[7.75, 12, 16.25].map(v)}</>;
+  else if (mode === 'three') body = <>{frame}{[9.17, 14.83].map(v)}</>;
+  else
+    body = (
+      <>
+        <line x1="4.5" y1="3.5" x2="19.5" y2="3.5" {...p} />
+        <rect x="3.5" y="7.5" width="17" height="9" rx="2.5" {...p} />
+        <line x1="4.5" y1="20.5" x2="19.5" y2="20.5" {...p} />
+      </>
+    );
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" className="mode-icon">
+      {body}
+    </svg>
+  );
+}
+
+function ViewMenu({ anchor, value, onPick, onClose }) {
+  return (
+    <Popover anchor={anchor} desktop onClose={onClose} title="Visualização" width={232} align="end">
+      <ul className="menu cal-menu" role="menu" aria-label="Visualização">
+        {MODES.map((m) => (
+          <li key={m} role="none">
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={value === m}
+              className={`menu-item cal-menu-item${value === m ? ' is-on' : ''}`}
+              onClick={() => onPick(m)}
+            >
+              <ModeIcon mode={m} />
+              <span className="flex-1 min-w-0 truncate">{MODE_LABEL[m]}</span>
+              {value === m && <Icon name="Check" size={18} className="menu-check" />}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Popover>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Itens compactos (células do mês e faixa "Dia todo")                 */
+/* ------------------------------------------------------------------ */
 function EventChip({ occ, onOpen, dense, day }) {
   const ev = occ.ev;
   return (
@@ -86,26 +214,81 @@ function TaskChip({ task, onOpen, onToggle }) {
   );
 }
 
+/** Etiqueta mínima para a célula do mês no celular: só o título, na cor do item. */
+function MiniChip({ x }) {
+  if (x.k === 'e') {
+    return (
+      <span className="mchip is-event" style={{ '--c': colorOf(x.o.ev.color).value }}>
+        {x.o.ev.title}
+      </span>
+    );
+  }
+  return (
+    <span className={`mchip is-task${x.t.done ? ' is-done' : ''}`} style={{ '--pc': priorityOf(x.t.priority).color }}>
+      {x.t.title}
+    </span>
+  );
+}
+
 /* ------------------------------------------------------------------ */
-/* Lista de um dia (abaixo do mês no celular, ao lado no desktop)      */
+/* Dia sem nada marcado                                                 */
 /* ------------------------------------------------------------------ */
-function DayList({ dayKey, todayKey, items, data, store, onOpenTask, onOpenEvent, onCreate }) {
+function EmptyDay({ compact }) {
+  return (
+    <div className={`day-empty${compact ? ' is-compact' : ''}`}>
+      <svg viewBox="0 0 200 150" className="day-empty-art" aria-hidden="true">
+        <path d="M38 78c-8-30 14-56 46-62 30-6 52 4 70 16 20 14 30 36 22 58-8 24-34 38-62 42-30 4-52-6-64-24-6-9-10-19-12-30z" className="de-blob" />
+        <g transform="rotate(-6 100 78)">
+          <rect x="58" y="44" width="86" height="70" rx="8" className="de-back" />
+          <rect x="62" y="40" width="86" height="70" rx="8" className="de-page" />
+          <path d="M62 48a8 8 0 0 1 8-8h70a8 8 0 0 1 8 8v8H62z" className="de-head" />
+          {[0, 1, 2, 3].map((c) =>
+            [0, 1].map((r) => <rect key={`${c}${r}`} x={70 + c * 18} y={64 + r * 18} width="14" height="14" rx="2.5" className="de-cell" />)
+          )}
+          <circle cx="113" cy="71" r="5" className="de-dot" />
+          {[84, 105, 126].map((x) => (
+            <rect key={x} x={x - 2.5} y="33" width="5" height="13" rx="2.5" className="de-ring" />
+          ))}
+        </g>
+        <path d="M44 46l2.6 5.4 5.4 2.6-5.4 2.6L44 62l-2.6-5.4-5.4-2.6 5.4-2.6z" className="de-spark" />
+        <path d="M162 92l1.8 3.7 3.7 1.8-3.7 1.8-1.8 3.7-1.8-3.7-3.7-1.8 3.7-1.8z" className="de-spark" />
+        <circle cx="150" cy="30" r="3" className="de-ring-o" />
+        <circle cx="52" cy="104" r="2.4" className="de-ring-o" />
+      </svg>
+      <p className="day-empty-title">Essa data está livre de tarefas</p>
+      <p className="day-empty-sub">Relaxe um pouco</p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Lista de um dia                                                     */
+/* ------------------------------------------------------------------ */
+function DayList({ dayKey, todayKey, items, data, store: st, onOpenTask, onOpenEvent, onCreate, bare = false }) {
   const { events, tasks } = items || { events: [], tasks: [] };
   const empty = !events.length && !tasks.length;
-  const hol = holidayOf(store.settings, dayKey);
+  const hol = holidayOf(st.settings, dayKey);
   return (
-    <section className="daylist" aria-label={`Itens de ${dayLabel(dayKey, todayKey)}`}>
-      <header className="daylist-head">
-        <h2>
-          {dayLabel(dayKey, todayKey)}
-          <span className="daylist-date"> {fromKey(dayKey).getDate()} de {MONTHS_LONG[fromKey(dayKey).getMonth()]}</span>
-          {hol && <span className={`hol-tag is-${hol.kind}`}>{hol.name}</span>}
-        </h2>
-        <button type="button" className="icon-btn" onClick={() => onCreate({ date: dayKey })} aria-label="Adicionar neste dia">
-          <Icon name="Plus" size={17} />
-        </button>
-      </header>
-      {empty && <p className="daylist-empty">Dia livre. Toque em + para adicionar uma tarefa ou evento.</p>}
+    <section className={`daylist${bare ? ' is-bare' : ''}`} aria-label={`Itens de ${dayLabel(dayKey, todayKey)}`}>
+      {bare ? (
+        hol && (
+          <p className="daylist-hol">
+            <span className={`hol-tag is-${hol.kind}`}>{hol.name}</span>
+          </p>
+        )
+      ) : (
+        <header className="daylist-head">
+          <h2>
+            {dayLabel(dayKey, todayKey)}
+            <span className="daylist-date"> {fromKey(dayKey).getDate()} de {MONTHS_LONG[fromKey(dayKey).getMonth()]}</span>
+            {hol && <span className={`hol-tag is-${hol.kind}`}>{hol.name}</span>}
+          </h2>
+          <button type="button" className="icon-btn" onClick={() => onCreate({ date: dayKey })} aria-label="Adicionar neste dia">
+            <Icon name="Plus" size={17} />
+          </button>
+        </header>
+      )}
+      {empty && <EmptyDay compact={!bare} />}
       {events.map((o) => (
         <button key={o.id} type="button" className="ev-row" style={{ '--c': colorOf(o.ev.color).value }} onClick={() => onOpenEvent(o)}>
           <span className="ev-row-bar" />
@@ -123,7 +306,7 @@ function DayList({ dayKey, todayKey, items, data, store, onOpenTask, onOpenEvent
       {tasks.length > 0 && (
         <div className="group daylist-tasks">
           {tasks.map((t) => (
-            <TaskRow key={t.id} task={t} data={data} todayKey={todayKey} onToggle={store.tasks.toggle} onOpen={onOpenTask} hideDate showList />
+            <TaskRow key={t.id} task={t} data={data} todayKey={todayKey} onToggle={st.tasks.toggle} onOpen={onOpenTask} hideDate showList />
           ))}
         </div>
       )}
@@ -132,70 +315,99 @@ function DayList({ dayKey, todayKey, items, data, store, onOpenTask, onOpenEvent
 }
 
 /* ------------------------------------------------------------------ */
-/* Mês                                                                 */
+/* Mês: "Lista" (grade compacta + itens do dia) e "Mês" (grade cheia)  */
 /* ------------------------------------------------------------------ */
-function MonthView({ cursor, selected, onSelect, todayKey, data, store, desktop, onOpenTask, onOpenEvent, onCreate, dir }) {
+function MonthGrid({ variant, cursor, selected, folded, onSelect, onDayOpen, todayKey, data, store: st, desktop, onOpenTask, onOpenEvent, onCreate, dir, onSwipe }) {
   const c = fromKey(cursor);
-  const grid = monthGrid(c.getFullYear(), c.getMonth());
-  const map = useMemo(() => itemsByDay(data, grid[0].key, grid[41].key), [data, grid[0].key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const full = monthGrid(c.getFullYear(), c.getMonth());
+  const rows = full.slice(35).some((d) => d.inMonth) ? 6 : full.slice(28, 35).some((d) => d.inMonth) ? 5 : 4;
+  // Dobrada: só a semana do dia escolhido
+  const weekStart = keyOf(weekStartOf(fromKey(selected)));
+  const grid = folded ? rangeDays(weekStart, 7).map((k) => ({ key: k, date: fromKey(k), inMonth: true })) : full.slice(0, rows * 7);
+  const first = grid[0].key;
+  const last = grid[grid.length - 1].key;
+  const map = useMemo(() => itemsByDay(data, first, last), [data, first, last]);
+  const wrapRef = useRef(null);
+  useSwipe(wrapRef, onSwipe, !desktop);
+  const big = variant === 'month' || desktop;
+  const animKey = folded ? `w${weekStart}` : `${c.getFullYear()}-${c.getMonth()}`;
+
   return (
-    <div className={`month-wrap${desktop ? ' is-desktop' : ''}`}>
-      <div className="month">
-        <div className="month-wd" aria-hidden="true">
-          {weekOrder().map((i) => (
-            <span key={i}>{desktop ? WD[i] : WD[i][0].toUpperCase()}</span>
-          ))}
-        </div>
-        <AnimatePresence mode="popLayout" initial={false}>
-          <motion.div
-            key={`${c.getFullYear()}-${c.getMonth()}`}
-            className="month-grid"
-            initial={{ opacity: 0, x: dir * 16 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: dir * -16, transition: { duration: 0.12 } }}
-            transition={{ duration: 0.18, ease: EASE_OUT }}
-          >
-            {grid.map((d) => {
-              const it = map.get(d.key) || { events: [], tasks: [] };
-              const all = [...it.events.map((o) => ({ k: 'e', o })), ...it.tasks.map((t) => ({ k: 't', t }))];
-              const max = 3;
-              const hol = holidayOf(store.settings, d.key);
-              return (
-                <div
-                  key={d.key}
-                  className={`mcell${d.inMonth ? '' : ' is-out'}${d.key === todayKey ? ' is-today' : ''}${d.key === selected ? ' is-selected' : ''}${hol ? ' is-holiday' : ''}`}
-                  title={hol ? hol.name : undefined}
-                  data-drop
-                  data-day={d.key}
-                  onClick={() => onSelect(d.key)}
-                  onDoubleClick={() => onCreate({ date: d.key })}
-                  role="gridcell"
-                  aria-selected={d.key === selected}
-                  aria-label={`${d.date.getDate()} de ${MONTHS_LONG[d.date.getMonth()]}${all.length ? `, ${all.length} itens` : ''}`}
-                >
-                  <span className="mcell-num">{d.date.getDate()}</span>
-                  {desktop && hol && <span className="mcell-hol">{hol.name}</span>}
-                  {desktop ? (
-                    <div className="mcell-items">
-                      {all.slice(0, max).map((x) =>
-                        x.k === 'e' ? <EventChip key={x.o.id} occ={x.o} onOpen={onOpenEvent} day={d.key} /> : <TaskChip key={x.t.id} task={x.t} onOpen={onOpenTask} onToggle={store.tasks.toggle} />
-                      )}
-                      {all.length > max && <span className="mcell-more">+{all.length - max}</span>}
-                    </div>
-                  ) : (
-                    <div className="mcell-dots" aria-hidden="true">
-                      {all.slice(0, 4).map((x, i) => (
-                        <i key={i} style={{ background: x.k === 'e' ? colorOf(x.o.ev.color).value : x.t.done ? 'var(--line-strong)' : 'var(--ink)' }} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </motion.div>
-        </AnimatePresence>
+    <div className={`month${big ? ' is-big' : ''}${folded ? ' is-folded' : ''}`} ref={wrapRef}>
+      <div className="month-wd" aria-hidden="true">
+        {weekOrder().map((i) => (
+          <span key={i}>{WD[i]}</span>
+        ))}
       </div>
-      <DayList dayKey={selected} todayKey={todayKey} items={map.get(selected) || itemsByDay(data, selected, selected).get(selected)} data={data} store={store} onOpenTask={onOpenTask} onOpenEvent={onOpenEvent} onCreate={onCreate} />
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.div
+          key={animKey}
+          className="month-grid"
+          style={{ '--rows': folded ? 1 : rows }}
+          initial={{ opacity: 0, x: dir * 18 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: dir * -18, transition: { duration: 0.12 } }}
+          transition={{ duration: 0.2, ease: EASE_OUT }}
+          role="grid"
+        >
+          {grid.map((d) => {
+            const it = map.get(d.key) || { events: [], tasks: [] };
+            const all = [...it.events.map((o) => ({ k: 'e', o })), ...it.tasks.map((t) => ({ k: 't', t }))];
+            const hol = holidayOf(st.settings, d.key);
+            const fit = desktop ? 3 : 4;
+            const shown = all.length > fit ? all.slice(0, fit - 1) : all;
+            return (
+              <div
+                key={d.key}
+                className={`mcell${d.inMonth ? '' : ' is-out'}${d.key === todayKey ? ' is-today' : ''}${d.key === selected ? ' is-selected' : ''}${hol ? ' is-holiday' : ''}`}
+                title={hol ? hol.name : undefined}
+                data-drop
+                data-day={d.key}
+                onClick={() => (variant === 'month' && !desktop ? onDayOpen(d.key) : onSelect(d.key))}
+                onDoubleClick={() => onCreate({ date: d.key })}
+                role="gridcell"
+                aria-selected={d.key === selected}
+                aria-label={`${d.date.getDate()} de ${MONTHS_LONG[d.date.getMonth()]}${all.length ? `, ${all.length} itens` : ''}`}
+              >
+                <span className="mcell-num">{d.date.getDate()}</span>
+                {desktop && hol && <span className="mcell-hol">{hol.name}</span>}
+                {desktop ? (
+                  <div className="mcell-items">
+                    {shown.map((x) =>
+                      x.k === 'e' ? <EventChip key={x.o.id} occ={x.o} onOpen={onOpenEvent} day={d.key} /> : <TaskChip key={x.t.id} task={x.t} onOpen={onOpenTask} onToggle={st.tasks.toggle} />
+                    )}
+                    {all.length > shown.length && (
+                      <button
+                        type="button"
+                        className="mcell-more"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDayOpen(d.key);
+                        }}
+                      >
+                        +{all.length - shown.length}
+                      </button>
+                    )}
+                  </div>
+                ) : variant === 'month' ? (
+                  <div className="mcell-chips" aria-hidden="true">
+                    {shown.map((x) => (
+                      <MiniChip key={x.k === 'e' ? x.o.id : x.t.id} x={x} />
+                    ))}
+                    {all.length > shown.length && <span className="mcell-more">+{all.length - shown.length}</span>}
+                  </div>
+                ) : (
+                  <div className="mcell-dots" aria-hidden="true">
+                    {all.slice(0, 3).map((x, i) => (
+                      <i key={i} style={{ background: x.k === 'e' ? colorOf(x.o.ev.color).value : x.t.done ? 'var(--line-strong)' : 'var(--muted)' }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -203,13 +415,17 @@ function MonthView({ cursor, selected, onSelect, todayKey, data, store, desktop,
 /* ------------------------------------------------------------------ */
 /* Grade de horários (semana, 3 dias, dia)                             */
 /* ------------------------------------------------------------------ */
-function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEvent, onCreate, onPickDay, hover, unscheduled, HOUR, setHour }) {
+function TimeGrid({ days, todayKey, data, store: st, desktop, onOpenTask, onOpenEvent, onCreate, onPickDay, hover, unscheduled, HOUR, setHour, onSwipe }) {
   const scrollRef = useRef(null);
-  const settings = store.settings;
+  const mainRef = useRef(null);
+  const settings = st.settings;
   const hourRef = useRef(HOUR);
   hourRef.current = HOUR;
   const setHourRef = useRef(setHour);
   setHourRef.current = setHour;
+  const narrow = !desktop && days.length > 3;
+  const cols = `${narrow ? 40 : 52}px repeat(${days.length}, minmax(0, 1fr))`;
+  useSwipe(mainRef, onSwipe, !desktop);
 
   // Zoom: Ctrl + rolagem no computador, pinça com dois dedos no celular
   useEffect(() => {
@@ -294,9 +510,9 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
   };
 
   return (
-    <div className={`tg${unscheduled ? ' has-side' : ''}`}>
-      <div className="tg-main">
-        <div className="tg-head" style={{ gridTemplateColumns: `52px repeat(${days.length}, 1fr)` }}>
+    <div className={`tg${unscheduled ? ' has-side' : ''}${narrow ? ' is-narrow' : ''}`}>
+      <div className="tg-main" ref={mainRef}>
+        <div className="tg-head" style={{ gridTemplateColumns: cols }}>
           <span />
           {days.map((k) => {
             const d = fromKey(k);
@@ -310,8 +526,8 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
             );
           })}
         </div>
-        <div className="tg-allday" style={{ gridTemplateColumns: `52px repeat(${days.length}, 1fr)` }}>
-          <span className="tg-allday-label">Dia todo</span>
+        <div className="tg-allday" style={{ gridTemplateColumns: cols }}>
+          <span className="tg-allday-label">{narrow ? 'Todo' : 'Dia todo'}</span>
           {days.map((k) => {
             const a = allDayFor(k);
             return (
@@ -320,14 +536,14 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
                   <EventChip key={o.id} occ={o} onOpen={onOpenEvent} dense day={k} />
                 ))}
                 {a.tasks.map((t) => (
-                  <TaskChip key={t.id} task={t} onOpen={onOpenTask} onToggle={store.tasks.toggle} />
+                  <TaskChip key={t.id} task={t} onOpen={onOpenTask} onToggle={st.tasks.toggle} />
                 ))}
               </div>
             );
           })}
         </div>
         <div className="tg-scroll" ref={scrollRef} data-autoscroll>
-          <div className="tg-body" style={{ height: 24 * HOUR, gridTemplateColumns: `52px repeat(${days.length}, 1fr)`, '--hour': `${HOUR}px` }}>
+          <div className="tg-body" style={{ height: 24 * HOUR, gridTemplateColumns: cols, '--hour': `${HOUR}px` }}>
             <div className="tg-hours" aria-hidden="true">
               {Array.from({ length: 23 }, (_, i) => (
                 <span key={i} style={{ top: (i + 1) * HOUR }}>
@@ -349,7 +565,7 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
               >
                 {gapsFor(k).map((g) => (
                   <div key={`g${g.start}`} className="gap" style={{ top: (g.start / 60) * HOUR, height: ((g.end - g.start) / 60) * HOUR - 2 }} aria-hidden="true">
-                    {(g.end - g.start) / 60 * HOUR > 30 && <span>Livre · {fmtMinutes(g.end - g.start)}</span>}
+                    {((g.end - g.start) / 60) * HOUR > 30 && <span>Livre · {fmtMinutes(g.end - g.start)}</span>}
                   </div>
                 ))}
                 {blocksFor(k).map((b) => {
@@ -363,7 +579,7 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
                         key={b.id}
                         className={`blk is-habit${b.done ? ' is-done' : ''}${height < 34 ? ' is-short' : ''}`}
                         style={{ ...style, '--c': colorOf(h.color).value }}
-                        onClick={() => k === todayKey && store.habits.toggle(h, k)}
+                        onClick={() => k === todayKey && st.habits.toggle(h, k)}
                         role="button"
                         tabIndex={0}
                         title={k === todayKey ? 'Tocar para marcar' : h.name}
@@ -387,10 +603,12 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
                         {...dragProps({ type: 'event', id: ev.id, minutes: b.end - b.start }, null, { disabled: !!ev.repeat || b.occ.date !== b.occ.endDate })}
                       >
                         <span className="blk-title">{ev.title}</span>
-                        <span className="blk-time">
-                          {fmtTime(hhmm(b.start))}–{fmtTime(hhmm(b.end % 1440))}
-                          {ev.location ? `, ${ev.location}` : ''}
-                        </span>
+                        {!narrow && (
+                          <span className="blk-time">
+                            {fmtTime(hhmm(b.start))}–{fmtTime(hhmm(b.end % 1440))}
+                            {ev.location ? `, ${ev.location}` : ''}
+                          </span>
+                        )}
                       </div>
                     );
                   }
@@ -406,10 +624,10 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
                       {...dragProps({ type: 'task', id: t.id, minutes: b.end - b.start })}
                     >
                       <span className="blk-title">
-                        <TaskCheck checked={t.done} priority={t.priority} size={14} onToggle={() => store.tasks.toggle(t.id)} label={`Concluir ${t.title}`} />
+                        {!narrow && <TaskCheck checked={t.done} priority={t.priority} size={14} onToggle={() => st.tasks.toggle(t.id)} label={`Concluir ${t.title}`} />}
                         {t.title}
                       </span>
-                      {height >= 34 && <span className="blk-time">{fmtTime(t.time)}</span>}
+                      {height >= 34 && !narrow && <span className="blk-time">{fmtTime(t.time)}</span>}
                     </div>
                   );
                 })}
@@ -450,11 +668,13 @@ function TimeGrid({ days, todayKey, data, store, desktop, onOpenTask, onOpenEven
 /* ------------------------------------------------------------------ */
 /* Ano: 12 meses pequenos com a intensidade de cada dia                */
 /* ------------------------------------------------------------------ */
-function YearView({ year, todayKey, data, settings, onPickDay }) {
+function YearView({ year, todayKey, data, settings, onPickDay, onSwipe, desktop }) {
   const { map, max } = useMemo(() => yearActivity(data, year), [data, year]);
   const order = weekOrder();
+  const ref = useRef(null);
+  useSwipe(ref, onSwipe, !desktop);
   return (
-    <div className="year">
+    <div className="year" ref={ref}>
       {Array.from({ length: 12 }, (_, m) => {
         const grid = monthGrid(year, m);
         const rows = grid.slice(35).some((d) => d.inMonth) ? 42 : 35;
@@ -493,74 +713,110 @@ function YearView({ year, todayKey, data, settings, onPickDay }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Lista (próximos 30 dias)                                            */
-/* ------------------------------------------------------------------ */
-function AgendaList({ todayKey, data, store, onOpenTask, onOpenEvent, onCreate }) {
-  const end = keyOf(addDays(fromKey(todayKey), 29));
-  const map = useMemo(() => itemsByDay(data, todayKey, end), [data, todayKey, end]);
-  const days = [...map.entries()].filter(([, v]) => v.events.length || v.tasks.some((t) => !t.done));
-  if (!days.length) return <p className="daylist-empty">Nada nos próximos 30 dias.</p>;
-  return (
-    <div className="agenda-list">
-      {days.map(([k, v]) => (
-        <DayList key={k} dayKey={k} todayKey={todayKey} items={{ events: v.events, tasks: v.tasks.filter((t) => !t.done) }} data={data} store={store} onOpenTask={onOpenTask} onOpenEvent={onOpenEvent} onCreate={onCreate} />
-      ))}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* Agenda                                                              */
 /* ------------------------------------------------------------------ */
-export function CalendarView({ store, todayKey, desktop, onOpenTask, onOpenEvent, onCreate, headerRight }) {
-  const data = store.data;
+export function CalendarView({ store: st, todayKey, desktop, onOpenTask, onOpenEvent, onCreate, headerRight, onDayChange }) {
+  const data = st.data;
   const [mode, setModeState] = useState(loadMode);
   const [cursor, setCursor] = useState(todayKey);
   const [selected, setSelected] = useState(todayKey);
+  const [folded, setFoldedState] = useState(() => ls.get(FOLD_KEY) === '1');
   const [dir, setDir] = useState(0);
   const [hover, setHover] = useState(null);
+  const [menu, setMenu] = useState(null);
+  const [daySheet, setDaySheet] = useState(null);
+  const [hint, setHint] = useState(false);
   const [HOUR, setHourState] = useState(() => loadZoom(desktop));
   const setHour = (fn) =>
     setHourState((h) => {
       const v = typeof fn === 'function' ? fn(h) : fn;
-      try {
-        localStorage.setItem(ZOOM_KEY, String(v));
-      } catch (e) {
-        /* sem storage */
-      }
+      ls.set(ZOOM_KEY, String(v));
       return v;
     });
-  const span = mode === 'week' ? (desktop ? 7 : 3) : 1;
+  const setFolded = (v) => {
+    setFoldedState(v);
+    ls.set(FOLD_KEY, v ? '1' : '0');
+  };
+  const isFolded = folded && mode === 'list' && !desktop;
+
+  // O botão + cria no dia que está em foco na agenda
+  const focusDay = isTimeMode(mode) ? cursor : mode === 'year' ? todayKey : selected;
+  useEffect(() => {
+    if (onDayChange) onDayChange(focusDay);
+  }, [focusDay]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onDayChange && onDayChange(null), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Dica "Toque para ir para hoje": só na primeira visita
+  useEffect(() => {
+    if (ls.get(HINT_KEY)) return undefined;
+    const show = setTimeout(() => setHint(true), 500);
+    const hide = setTimeout(() => {
+      setHint(false);
+      ls.set(HINT_KEY, '1');
+    }, 4500);
+    return () => {
+      clearTimeout(show);
+      clearTimeout(hide);
+    };
+  }, []);
 
   const setMode = (m) => {
+    setDir(0);
+    if (isTimeMode(m) && !isTimeMode(mode)) setCursor(selected);
+    if (!isTimeMode(m) && isTimeMode(mode)) {
+      setSelected(cursor);
+    } else if ((m === 'list' || m === 'month') && mode === 'year') {
+      if (selected.slice(0, 4) === cursor.slice(0, 4)) setCursor(selected);
+      else setSelected(cursor);
+    } else if ((m === 'list' || m === 'month') && !isTimeMode(mode)) setCursor(selected);
     setModeState(m);
-    try {
-      localStorage.setItem(MODE_KEY, m);
-    } catch (e) {
-      /* sem storage */
-    }
+    ls.set(VIEW_KEY, m);
   };
 
   const days = useMemo(() => {
-    if (mode === 'week' && desktop) return rangeDays(keyOf(weekStartOf(fromKey(cursor))), 7);
-    if (mode === 'week') return rangeDays(cursor, 3);
+    if (mode === 'week') return rangeDays(keyOf(weekStartOf(fromKey(cursor))), 7);
+    if (mode === 'three') return rangeDays(cursor, 3);
     return [cursor];
-  }, [mode, cursor, desktop]);
+  }, [mode, cursor]);
+
+  /** Seleciona um dia e leva a grade para o mês dele. */
+  const selectDay = (k) => {
+    if (!sameMonth(k, cursor)) {
+      setDir(k > cursor ? 1 : -1);
+      setCursor(k);
+    }
+    setSelected(k);
+  };
 
   const step = (n) => {
     setDir(n);
     const c = fromKey(cursor);
     if (mode === 'year') setCursor(keyOf(new Date(c.getFullYear() + n, 0, 1)));
-    else if (mode === 'month') {
+    else if (mode === 'list' || mode === 'month') {
+      if (isFolded) {
+        const k = keyOf(addDays(fromKey(selected), 7 * n));
+        setSelected(k);
+        setCursor(k);
+        return;
+      }
       const d = new Date(c.getFullYear(), c.getMonth() + n, 1);
-      setCursor(keyOf(d));
-      setSelected(keyOf(d.getMonth() === fromKey(todayKey).getMonth() && d.getFullYear() === fromKey(todayKey).getFullYear() ? fromKey(todayKey) : d));
-    } else setCursor(keyOf(addDays(c, n * (mode === 'week' ? span : 1))));
+      const k = sameMonth(keyOf(d), todayKey) ? todayKey : keyOf(d);
+      setCursor(k);
+      setSelected(k);
+    } else setCursor(keyOf(addDays(c, n * (mode === 'week' ? 7 : mode === 'three' ? 3 : 1))));
   };
   const goToday = () => {
-    setDir(cursor < todayKey ? 1 : -1);
+    setHint(false);
+    ls.set(HINT_KEY, '1');
+    setDir(cursor < todayKey ? 1 : cursor > todayKey ? -1 : 0);
     setCursor(todayKey);
     setSelected(todayKey);
+  };
+  const swipe = {
+    left: () => step(1),
+    right: () => step(-1),
+    up: mode === 'list' ? () => !folded && setFolded(true) : undefined,
+    down: mode === 'list' ? () => folded && setFolded(false) : undefined,
   };
 
   // Arrastar e soltar: horário, dia inteiro ou dia do mês
@@ -585,95 +841,143 @@ export function CalendarView({ store, todayKey, desktop, onOpenTask, onOpenEvent
       const time = hhmm(minutesAt());
       if (e.data.type === 'task') {
         const task = data.tasks.find((x) => x.id === e.data.id);
-        store.tasks.update(e.data.id, { date: slotDay, time, duration: task && task.duration ? task.duration : 30 });
-      } else store.events.move(e.data.id, slotDay, time);
+        st.tasks.update(e.data.id, { date: slotDay, time, duration: task && task.duration ? task.duration : 30 });
+      } else st.events.move(e.data.id, slotDay, time);
     } else if (day) {
-      if (e.data.type === 'task') store.tasks.update(e.data.id, allday !== undefined ? { date: day, time: '' } : { date: day });
-      else store.events.move(e.data.id, day);
+      if (e.data.type === 'task') st.tasks.update(e.data.id, allday !== undefined ? { date: day, time: '' } : { date: day });
+      else st.events.move(e.data.id, day);
     }
   });
 
+  // Título: o mês em foco (com o ano só quando não é o ano atual); toque volta para hoje
   const c = fromKey(cursor);
-  const title =
-    mode === 'year'
-      ? String(c.getFullYear())
-      : mode === 'month'
-      ? monthTitle(c)
-      : mode === 'agenda'
-        ? 'Próximos 30 dias'
-        : days.length > 1
-          ? `${fromKey(days[0]).getDate()} ${MONTHS_LONG[fromKey(days[0]).getMonth()].slice(0, 3)} – ${fromKey(days[days.length - 1]).getDate()} ${MONTHS_LONG[fromKey(days[days.length - 1]).getMonth()].slice(0, 3)}`
-          : `${dayLabel(cursor, todayKey)}, ${c.getDate()} de ${MONTHS_LONG[c.getMonth()]}`;
+  const yearSuffix = (d) => (d.getFullYear() !== fromKey(todayKey).getFullYear() ? ` de ${d.getFullYear()}` : '');
+  let title;
+  if (mode === 'year') title = String(c.getFullYear());
+  else if (isTimeMode(mode) && days.length > 1 && !sameMonth(days[0], days[days.length - 1])) {
+    const a = fromKey(days[0]);
+    const b = fromKey(days[days.length - 1]);
+    title = `${MONTHS_LONG[a.getMonth()].slice(0, 3)} – ${MONTHS_LONG[b.getMonth()].slice(0, 3)}${yearSuffix(b)}`;
+  } else {
+    const d = isFolded ? fromKey(selected) : isTimeMode(mode) ? fromKey(days[0]) : c;
+    title = `${MONTHS_LONG[d.getMonth()]}${yearSuffix(d)}`;
+  }
 
-  const unscheduled = desktop && (mode === 'week' || mode === 'day') ? data.tasks.filter((t) => !t.done && !t.date).slice(0, 30) : null;
+  const unscheduled = desktop && isTimeMode(mode) ? data.tasks.filter((t) => !t.done && !t.date).slice(0, 30) : null;
   const isCurrent =
-    mode === 'year' ? cursor.slice(0, 4) === todayKey.slice(0, 4) : mode === 'month' ? cursor.slice(0, 7) === todayKey.slice(0, 7) && selected === todayKey : days.includes(todayKey);
+    mode === 'year' ? cursor.slice(0, 4) === todayKey.slice(0, 4) : isTimeMode(mode) ? days.includes(todayKey) : sameMonth(cursor, todayKey) && selected === todayKey;
+  const sheetItems = useMemo(() => (daySheet ? itemsByDay(data, daySheet, daySheet).get(daySheet) : null), [data, daySheet]);
+  const common = { todayKey, data, store: st, desktop, onOpenTask, onOpenEvent, onCreate };
 
   return (
-    <div className={`cal is-${mode}`}>
-      <PageHeader title={<span className="first-up">{title}</span>}>
-        {headerRight}
-      </PageHeader>
-      <div className="cal-bar">
-        <Segmented
-          id="calmode"
-          label="Visualização"
-          value={mode}
-          onChange={(m) => {
-            setDir(0);
-            setMode(m);
-            if (m !== 'month') setCursor(selected);
-          }}
-          options={[
-            { id: 'month', label: 'Mês' },
-            { id: 'week', label: desktop ? 'Semana' : '3 dias' },
-            { id: 'day', label: 'Dia' },
-            { id: 'agenda', label: 'Lista' },
-            { id: 'year', label: 'Ano' },
-          ]}
-        />
-        {mode !== 'agenda' && (
+    <div className={`cal is-${mode}${desktop ? ' is-desk' : ''}`}>
+      <PageHeader
+        title={
+          <span className="cal-title-wrap">
+            <button type="button" className="cal-title" onClick={goToday} aria-label={`${title}. Toque para ir para hoje`}>
+              <AnimatePresence mode="popLayout" initial={false}>
+                <motion.span
+                  key={title}
+                  className="cal-title-text"
+                  initial={{ opacity: 0, y: dir >= 0 ? 6 : -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: dir >= 0 ? -6 : 6, transition: { duration: 0.1 } }}
+                  transition={{ duration: 0.18, ease: EASE_OUT }}
+                >
+                  {title}
+                </motion.span>
+              </AnimatePresence>
+            </button>
+            <AnimatePresence>
+              {hint && (
+                <motion.span
+                  className="cal-hint"
+                  role="status"
+                  initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                  transition={{ duration: 0.2, ease: EASE_OUT }}
+                  onClick={goToday}
+                >
+                  Toque para ir para hoje
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </span>
+        }
+      >
+        {desktop && (
           <div className="cal-nav">
             {!isCurrent && (
               <button type="button" className="chip-btn sm" onClick={goToday}>
                 Hoje
               </button>
             )}
-            <button type="button" className="icon-btn" onClick={() => step(-1)} aria-label="Anterior">
+            <button type="button" className="icon-btn ghost" onClick={() => step(-1)} aria-label="Anterior">
               <Icon name="ChevronLeft" size={18} />
             </button>
-            <button type="button" className="icon-btn" onClick={() => step(1)} aria-label="Próximo">
+            <button type="button" className="icon-btn ghost" onClick={() => step(1)} aria-label="Próximo">
               <Icon name="ChevronRight" size={18} />
             </button>
           </div>
         )}
-      </div>
+        <button
+          type="button"
+          className={`icon-btn ghost cal-view-btn${menu ? ' is-active' : ''}`}
+          onClick={(e) => setMenu(menu ? null : e.currentTarget.getBoundingClientRect())}
+          aria-label={`Visualização: ${MODE_LABEL[mode]}`}
+          aria-haspopup="menu"
+          aria-expanded={!!menu}
+        >
+          <ModeIcon mode={mode} size={21} />
+        </button>
+        {headerRight}
+      </PageHeader>
 
-      {mode === 'month' && (
-        <MonthView
-          cursor={cursor}
-          selected={selected}
-          onSelect={setSelected}
-          todayKey={todayKey}
-          data={data}
-          store={store}
-          desktop={desktop}
-          onOpenTask={onOpenTask}
-          onOpenEvent={onOpenEvent}
-          onCreate={onCreate}
-          dir={dir}
-        />
+      <AnimatePresence>
+        {menu && (
+          <ViewMenu
+            anchor={menu}
+            value={mode}
+            onClose={() => setMenu(null)}
+            onPick={(m) => {
+              setMenu(null);
+              setMode(m);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {(mode === 'list' || mode === 'month') && (
+        <div className={`month-wrap is-${mode}${desktop ? ' is-desktop' : ''}`}>
+          <div className="month-col">
+            <MonthGrid
+              {...common}
+              variant={mode}
+              cursor={cursor}
+              selected={selected}
+              folded={isFolded}
+              onSelect={selectDay}
+              onDayOpen={(k) => {
+                setSelected(k);
+                setDaySheet(k);
+              }}
+              dir={dir}
+              onSwipe={swipe}
+            />
+            {mode === 'list' && !desktop && (
+              <button type="button" className="month-fold" onClick={() => setFolded(!folded)} aria-label={folded ? 'Mostrar o mês inteiro' : 'Mostrar só a semana'}>
+                <span />
+              </button>
+            )}
+          </div>
+          {mode === 'list' && <DayList {...common} dayKey={selected} items={itemsByDay(data, selected, selected).get(selected)} bare={!desktop} />}
+        </div>
       )}
-      {(mode === 'week' || mode === 'day') && (
+      {isTimeMode(mode) && (
         <TimeGrid
+          {...common}
           days={days}
-          todayKey={todayKey}
-          data={data}
-          store={store}
-          desktop={desktop}
-          onOpenTask={onOpenTask}
-          onOpenEvent={onOpenEvent}
-          onCreate={onCreate}
           onPickDay={(k) => {
             setCursor(k);
             setSelected(k);
@@ -683,6 +987,7 @@ export function CalendarView({ store, todayKey, desktop, onOpenTask, onOpenEvent
           unscheduled={unscheduled}
           HOUR={HOUR}
           setHour={setHour}
+          onSwipe={swipe}
         />
       )}
       {mode === 'year' && (
@@ -690,15 +995,49 @@ export function CalendarView({ store, todayKey, desktop, onOpenTask, onOpenEvent
           year={c.getFullYear()}
           todayKey={todayKey}
           data={data}
-          settings={store.settings}
+          settings={st.settings}
+          desktop={desktop}
+          onSwipe={swipe}
           onPickDay={(k) => {
             setCursor(k);
             setSelected(k);
-            setMode('month');
+            setModeState('list');
+            ls.set(VIEW_KEY, 'list');
           }}
         />
       )}
-      {mode === 'agenda' && <AgendaList todayKey={todayKey} data={data} store={store} onOpenTask={onOpenTask} onOpenEvent={onOpenEvent} onCreate={onCreate} />}
+
+      <AnimatePresence>
+        {daySheet && (
+          <Sheet desktop={desktop} title={`${dayLabel(daySheet, todayKey)}, ${fromKey(daySheet).getDate()} de ${MONTHS_LONG[fromKey(daySheet).getMonth()]}`} onClose={() => setDaySheet(null)} className="is-compact">
+            <DayList
+              {...common}
+              dayKey={daySheet}
+              items={sheetItems}
+              bare
+              onOpenTask={(id) => {
+                setDaySheet(null);
+                onOpenTask(id);
+              }}
+              onOpenEvent={(o) => {
+                setDaySheet(null);
+                onOpenEvent(o);
+              }}
+            />
+            <button
+              type="button"
+              className="chip-btn day-sheet-add"
+              onClick={() => {
+                const k = daySheet;
+                setDaySheet(null);
+                onCreate({ date: k });
+              }}
+            >
+              <Icon name="Plus" size={16} /> Adicionar neste dia
+            </button>
+          </Sheet>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
